@@ -114,9 +114,13 @@ ora_cygwin_set_env(name, value)
 
 #endif /* __CYGWIN32__ */
 
-
 INCLUDE: Oracle.xsi
 
+
+
+# ------------------------------------------------------------
+# statement interface
+# ------------------------------------------------------------
 MODULE = DBD::Oracle	PACKAGE = DBD::Oracle::st
 
 
@@ -281,7 +285,9 @@ cancel(sth)
 
 
 
-
+# ------------------------------------------------------------
+# database level interface
+# ------------------------------------------------------------
 MODULE = DBD::Oracle	PACKAGE = DBD::Oracle::db
 
 void
@@ -702,6 +708,10 @@ ora_lob_chunk_size(dbh, locator)
 	}
 
 
+
+# ------------------------------------------------------------
+# driver level interface
+# ------------------------------------------------------------
 MODULE = DBD::Oracle	PACKAGE = DBD::Oracle::dr
 
 void

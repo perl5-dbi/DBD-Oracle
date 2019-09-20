@@ -210,8 +210,8 @@ dbd_dr_destroy(SV *drh, imp_drh_t *imp_drh)
 
 	/* We rely on the DBI dispatcher to destroy all child handles before we get here (DBI >= 1.623). */
 
-	if (imp_drh->leak_state) {
-		/* With ithreads, we can't tell when the last dr handle is destroyed. */
+	if (imp_drh->leak_handles) {
+		/* By using ithread, handles will leak in dbd_dr_destroy() */
 		return;
 	}
 
@@ -568,8 +568,8 @@ dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, S
 			shared_dbh = NULL ;
 		}
 
-		/* With ithreads, we can't tell when the last dr handle is destroyed. */
-		imp_drh->leak_state = 1;
+		/* By using ithread, handles will leak in dbd_dr_destroy() */
+		imp_drh->leak_handles = 1;
 	}
 #endif
 
@@ -583,7 +583,7 @@ dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, S
 				imp_dbh->envhp = NULL; /* force new environment */
 			}
 		}
-		/* RT46739 */
+		/* Test if a cached environment handle it still usable (see RT46739) */
 		if (imp_dbh->envhp) {
 			OCIHandleAlloc_ok(imp_dbh, imp_dbh->envhp, &imp_dbh->errhp, OCI_HTYPE_ERROR, status);
 			if (status != OCI_SUCCESS) {
@@ -1287,8 +1287,8 @@ dbd_take_imp_data(SV *dbh, imp_xxh_t *imp_xxh, void* foo)
 	D_imp_dbh(dbh);
 	D_imp_drh_from_dbh;
 
-	/* With ithreads, we can't tell when the last dr handle is destroyed. */
-	imp_drh->leak_state = 1;
+	/* By using ithread, handles will leak in dbd_dr_destroy() */
+	imp_drh->leak_handles = 1;
 
 	/* Indicate that SUPER::take_imp_data should be called. */
 	return &PL_sv_no;

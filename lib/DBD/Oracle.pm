@@ -1780,18 +1780,23 @@ NOTE: You will need an Oracle client 10.1 or later to use this.
 
 =head4 ora_dbh_share
 
-Requires at least Perl 5.8.0 compiled with ithreads.
+Requires at least Perl 5.8.0 compiled with ithreads (interpreter-based
+threads).
 
-Allows you to share
-database connections between threads. The first connect will make the
-connection, all following calls to connect with the same ora_dbh_share
-attribute will use the same database connection. The value must be a
-reference to a already shared scalar which is initialized to an empty
-string.
+Allows you to share database connections between threads. The first
+connect will make the connection, all following calls to connect with
+the same ora_dbh_share attribute will use the same database connection.
+The value must be a reference to a already shared scalar which is
+initialized to an empty string.
 
   our $orashr : shared = '' ;
 
   $dbh = DBI->connect ($dsn, $user, $passwd, {ora_dbh_share => \$orashr}) ;
+
+With ithreads DBD::Oracle will leak handles, because it can't tell
+when the last driver handle is destroyed.
+
+Please keep in mind, that ithreads are officially discouraged.
 
 =head4 ora_events
 

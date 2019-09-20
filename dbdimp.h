@@ -11,17 +11,21 @@
 typedef struct taf_callback_st taf_callback_t;
 
 struct taf_callback_st {
-	SV   *function; /*User supplied TAF functiomn*/
-    SV   *dbh_ref;
+	SV   *function;     /*User supplied TAF function*/
+	SV   *dbh_ref;
 };
 
 typedef struct imp_fbh_st imp_fbh_t;
 
 
+/* Define implementation specific driver handle data structure */
 struct imp_drh_st {
 	dbih_drc_t com;		/* MUST be first element in structure	*/
-	OCIEnv *envhp;
-	bool leak_state;
+	OCIEnv *envhp;		/* global environment handler, see also */
+						/* connect attr ora_envhp               */
+	bool leak_handles;	/* shared dbh's will leak handles in    */
+						/* dbd_dr_destroy(), see connect attr   */
+						/* ora_dbh_share for more information   */
 #ifdef ORA_OCI_112
 	HV *charset_hv;
 	HV *pool_hv;
@@ -44,7 +48,7 @@ struct session_pool_st {
 };
 #endif
 
-/* Define dbh implementor data structure */
+/* Define implementation specific database handle data structure */
 struct imp_dbh_st {
 	dbih_dbc_t com;		/* MUST be first element in structure	*/
 
@@ -55,7 +59,9 @@ struct imp_dbh_st {
 #endif
 
 	void *(*get_oci_handle) _((imp_dbh_t *imp_dbh, int handle_type, int flags));
-	OCIEnv 		*envhp;		/* copy of drh pointer	*/
+	OCIEnv 		*envhp;		/* session environment handler, this is mostly */
+							/* a copy of imp_drh->envhp, see also connect  */
+							/* attr ora_envhp                              */
 	OCIError 	*errhp;
 	OCIServer 	*srvhp;
 	OCISvcCtx 	*svchp;
@@ -101,7 +107,7 @@ struct imp_dbh_st {
 typedef struct lob_refetch_st lob_refetch_t; /* Define sth implementor data structure */
 
 
-/*statement structure */
+/* Define implementation specific statement data structure */
 struct imp_sth_st {
 
 	dbih_stc_t com;		/* MUST be first element in structure	*/
