@@ -1546,6 +1546,7 @@ sub find_headers {
        "$OH/plsql", # oratypes.h sometimes here (eg HPUX 11.23 Itanium Oracle 9.2.0),
        # --- Oracle SDK Instant Client locations
        "$OH/sdk/include",
+       "$OH/include",
        # --- Oracle RPM Instant Client locations
        map { ( $_, $_."64"   ) }
        map { ( $_, "/usr$_" ) }
