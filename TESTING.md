@@ -1,5 +1,4 @@
-Variables used in tests
------------------------
+# Variables used in tests
 
 ** Connecting to Oracle **
 
@@ -19,7 +18,9 @@ ORACLE_DSN
 
 DSN details when connecting to real Oracle for tests
 
-    $ export ORACLE_DSN='dbi:Oracle:testdb'
+``` bash
+$ export ORACLE_DSN='dbi:Oracle:testdb'
+```
 
 DBI_DSN
 
