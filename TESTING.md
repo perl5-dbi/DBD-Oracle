@@ -45,7 +45,11 @@ Skips dropping temporary tables when tests complete. Use to examine the mess aft
 
 Sets the date format as normal
 
-## Vars that need more detail
+# Test all script
+
+The mkta.pl script might be useful as for testing against multiple DB's quickly
+
+# Vars that need more detail
 
 `NLS_NCHAR`
 
