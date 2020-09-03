@@ -114,9 +114,9 @@ So you should set that to a valid user (e.g. 'scott/tiger') and ensure that
 this user has sufficient privileges to create, insert into, select from and
 drop a table,  is also able to create, call and drop a procedure  and is able
 to select from systemtables like 'v$sessions'. Using 'system/manager' might
-work but is not recommended! See also
+work but is not recommended! See also README.login.txt and TESTING.md.
 
-README.login.txt.
+Run tests with:
 
     make test
 
