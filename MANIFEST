@@ -12,6 +12,7 @@ Oracle.xs
 README
 README.help.txt
 README.mkdn
+TESTING.md
 TODO
 cpanfile
 dbdimp.c
@@ -93,7 +94,6 @@ t/58object.t
 t/60reauth.t
 t/70meta.t
 t/80ora_charset.t
-t/README
 t/lib/DBDOracleTestLib.pm
 t/lib/ExecuteArray.pm
 t/rt13865.t
