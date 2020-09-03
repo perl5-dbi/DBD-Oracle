@@ -65,8 +65,8 @@ my %opts = (
            homepage => 'https://metacpan.org/pod/DBD::Oracle',
            repository => {
                type => 'git',
-               url => 'git://github.com/yanick/DBD-Oracle.git',
-               web => 'http://github.com/yanick/DBD-Oracle/tree',
+               url => 'git://github.com/perl5-dbi/DBD-Oracle.git',
+               web => 'http://github.com/perl5-dbi/DBD-Oracle',
            },
        },
     },
@@ -96,7 +96,6 @@ my %mk_target_rules;
 =item -b
 
 Try to use Oracle's own 'build' rule. Defaults to true.
-
 
 =item -r
 
