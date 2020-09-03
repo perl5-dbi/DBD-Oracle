@@ -1,20 +1,22 @@
 # Variables used in tests
 
-** Connecting to Oracle **
+**Connecting to Oracle**
 
-ORACLE_USERID - important
+`ORACLE_USERID` - important
 
 Which user & password to use when running tests against a real Oracle database
 
 Should be 'user/password' or a longer string with connection details.
 
-     $ export ORACLE_USERID='scott/tiger'
+``` bash
+$ export ORACLE_USERID='scott/tiger'
+```
 
-ORACLE_USERID_2
+`ORACLE_USERID_2`
 
 Provides a second set of user credentials when needed
 
-ORACLE_DSN
+`ORACLE_DSN`
 
 DSN details when connecting to real Oracle for tests
 
@@ -22,42 +24,37 @@ DSN details when connecting to real Oracle for tests
 $ export ORACLE_DSN='dbi:Oracle:testdb'
 ```
 
-DBI_DSN
+`DBI_DSN`
 
-If ORACLE_DSN is not provided, this will be used. Otherwise falls back to internal default.
+If `ORACLE_DSN` is not provided, this will be used. Otherwise falls back to internal default.
 
-** Creation of tables, views, functions etc **
+**Creation of tables, views, functions etc**
 
-DBD_ORACLE_SEQ - important
+`DBD_ORACLE_SEQ` - important
 
 Appended to table, view, function (etc) that are created during testing to help
 prevent collisions
 
-DBD_SKIP_TABLE_DROP
+`DBD_SKIP_TABLE_DROP`
 
-Skips dropping temporary tables when tests complete. Use to examine the mess.
+Skips dropping temporary tables when tests complete. Use to examine the mess after failed tests.
 
-** Other **
+**Other**
 
-NLS_DATE_FORMAT
+`NLS_DATE_FORMAT`
 
 Sets the date format as normal
 
-Need more details
------------------
+## Vars that need more detail
 
-NLS_NCHAR
+`NLS_NCHAR`
 
-NLS_LANG
-
+`NLS_LANG`
 
 ???
 
-DBI_USER
+`DBI_USER`
 
-DBI_PASS
+`DBI_PASS`
 
-DBD_ALL_TESTS
-
-Forces some tests to run, that otherwise wouldn't
-
+`DBD_ALL_TESTS` - Forces some tests to run, that otherwise wouldn't
