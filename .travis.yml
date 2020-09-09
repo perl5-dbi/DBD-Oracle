@@ -2,7 +2,7 @@ language: perl
 
 # See https://docs.travis-ci.com/user/reference/overview/#Virtualisation-Environment-vs-Operating-System
 os: linux
-dist: trusty
+dist: xenial
 
 env:
   global:
@@ -64,6 +64,22 @@ jobs:
         - ORACLE_USERID_2=mspiggy/barfoo
         - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
 
+    - perl: '5.32-shrplib'
+      env:
+        - ORACLEV=18.3
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
+    - perl: '5.32-shrplib'
+      env:
+        - ORACLEV=18.5
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
 # Perl 5.28 variations
     - perl: '5.28'
       env:
@@ -80,6 +96,23 @@ jobs:
         - ORACLE_USERID=kermit/foobar
         - ORACLE_USERID_2=mspiggy/barfoo
         - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
+    - perl: '5.28'
+      env:
+        - ORACLEV=18.3
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
+    - perl: '5.28'
+      env:
+        - ORACLEV=18.5
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
     - perl: '5.28-shrplib'
       env:
         - ORACLEV=11.2
@@ -91,6 +124,22 @@ jobs:
     - perl: '5.28-shrplib'
       env:
         - ORACLEV=12.2
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
+    - perl: '5.28-shrplib'
+      env:
+        - ORACLEV=18.3
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
+    - perl: '5.28-shrplib'
+      env:
+        - ORACLEV=18.5
         - ORACLEDBV=11.2
         - ORACLE_USERID=kermit/foobar
         - ORACLE_USERID_2=mspiggy/barfoo
@@ -112,6 +161,7 @@ jobs:
         - ORACLE_USERID=kermit/foobar
         - ORACLE_USERID_2=mspiggy/barfoo
         - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
     - perl: '5.26-shrplib'
       env:
         - ORACLEV=11.2
@@ -227,13 +277,21 @@ jobs:
         - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
 
 # Test without database, all tests should skip
-    - perl: '5.26'
+    - perl: '5.32'
       env:
         - ORACLEV=11.2
         - COVERAGE=1
-    - perl: '5.26'
+    - perl: '5.32'
       env:
         - ORACLEV=12.2
+        - COVERAGE=1
+    - perl: '5.32'
+      env:
+        - ORACLEV=18.3
+        - COVERAGE=1
+    - perl: '5.32'
+      env:
+        - ORACLEV=18.5
         - COVERAGE=1
 
 before_install:
@@ -248,11 +306,12 @@ before_install:
   - perl -V
   - build-dist
   - cd $BUILD_DIR
+  - cat cpanfile
 
 install:
   - perl -M5.014 -e1 2>/dev/null || cpan-install Dist::Zilla@5.047
-  - cpan-install --deps
-  - cpan-install --coverage
+  - cpan-install --update-prereqs --deps
+  - cpan-install --update-prereqs --coverage
 
 before_script:
   - pwd

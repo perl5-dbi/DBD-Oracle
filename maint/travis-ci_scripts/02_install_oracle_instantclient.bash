@@ -8,21 +8,58 @@ fi
 if [ "$ORACLEV" = "12.2" ]; then
     export LONGV="12.2.0.1.0"
 fi
+if [ "$ORACLEV" = "18.3" ]; then
+    export LONGV="18.3.0.0.0"
+fi
+if [ "$ORACLEV" = "18.5" ]; then
+    export LONGV="18.5.0.0.0"
+fi
+if [ "$ORACLEV" = "19.6" ]; then
+    export LONGV="19.6.0.0.0"
+fi
 
 if [ -n "$ORACLEV" ]; then
-    echo "Install Oracle SDK $ORACLEV"
+    SUFFIX=""
+    if [[ "$ORACLEV" = "18.3" || "$ORACLEV" = "18.5" ]]; then
+        SUFFIX="dbru"
+    fi
+    echo "Installing Oracle SDK $ORACLEV"
     mkdir /etc/oracle
-    mkdir -p /usr/lib/oracle/$ORACLEV/client/bin
-    mkdir -p /usr/lib/oracle/$ORACLEV/client/lib
-    mkdir -p /usr/include/oracle/$ORACLEV/client
-    mkdir -p /usr/share/oracle/$ORACLEV/client
+    mkdir -p "/usr/lib/oracle/$ORACLEV/client/bin"
+    mkdir -p "/usr/lib/oracle/$ORACLEV/client/lib"
+    mkdir -p "/usr/include/oracle/$ORACLEV/client"
+    mkdir -p "/usr/share/oracle/$ORACLEV/client"
     pushd `pwd`
     cd /usr/lib/oracle
     for i in "basic" "sdk" "sqlplus"; do
         # Repo intended for Dockerfiles, see https://github.com/bumpx/oracle-instantclient/blob/master/README.md
-        wget --quiet https://github.com/bumpx/oracle-instantclient/raw/master/instantclient-$i-linux.x64-$LONGV.zip
+        wget --quiet "https://github.com/bumpx/oracle-instantclient/raw/master/instantclient-$i-linux.x64-$LONGV$SUFFIX.zip"
     done
     for i in `ls *zip`; do unzip $i; done
+fi
+if [[ "$ORACLEV" = "18.3" || "$ORACLEV" = "18.5" ]]; then
+    STUB=$(echo $ORACLEV | sed 's/\./_/')
+    echo "# Contents of instantclient-basic-linux.x64-$LONGV.zip"
+    find "instantclient_$STUB"
+    mv "instantclient_$STUB/adrci"   "$ORACLEV/client/bin/"
+    mv "instantclient_$STUB/genezi"  "$ORACLEV/client/bin/"
+    mv "instantclient_$STUB/uidrvci" "$ORACLEV/client/bin/"
+    mv instantclient_$STUB/{libclntshcore.so.18.1,libclntsh.so.18.1,libipc1.so,libmql1.so,libnnz18.so,libocci.so.18.1,libociei.so,libocijdbc18.so,libons.so,liboramysql18.so,ojdbc8.jar,xstreams.jar} $ORACLEV/client/lib/
+    echo "# Contents of instantclient-sqlplus-linux.x64-$LONGV.zip"
+    mv instantclient_$STUB/sqlplus $ORACLEV/client/bin/
+    mv instantclient_$STUB/glogin.sql instantclient_$STUB/libsqlplus.so instantclient_$STUB/libsqlplusic.so $ORACLEV/client/lib/
+    echo "# Contents of instantclient-sdk-linux.x64-$LONGV.zip"
+    mv instantclient_$STUB/sdk/include/*h /usr/include/oracle/$ORACLEV/client/
+    mv instantclient_$STUB/sdk/demo/* /usr/share/oracle/$ORACLEV/client/
+    mv instantclient_$STUB/sdk/ott /usr/share/oracle/$ORACLEV/client/
+    mv instantclient_$STUB/sdk/ottclasses.zip $ORACLEV/client/lib/ottclasses.zip
+    ln -s libclntshcore.so.18.1 "$ORACLEV/client/lib/libclntshcore.so"
+    ln -s libclntsh.so.18.1 "$ORACLEV/client/lib/libclntsh.so"
+    ln -s libocci.so.18.1 "$ORACLEV/client/lib/libocci.so"
+    echo "# FYI What wasnt moved from Oracle zip files:"
+    find "instantclient_$STUB"
+    echo "# Clean up"
+    rm -rf "instantclient_$STUB"
 fi
 if [ "$ORACLEV" = "12.2" ]; then
     echo "# Contents of instantclient-basic-linux.x64-$LONGV.zip"

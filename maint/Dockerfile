@@ -15,7 +15,7 @@ FROM perl:5.32-threaded-buster
 # Adjust the two variables below to set the Oracle XE server version and client version
 
 ENV ORACLEDBV=11.2 \
-    ORACLEV=12.2
+    ORACLEV=18.3
 
 # These are used by DBD::Oracle unit tests
 ENV ORACLE_USERID=kermit/foobar \
