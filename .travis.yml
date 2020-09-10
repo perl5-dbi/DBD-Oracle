@@ -80,6 +80,14 @@ jobs:
         - ORACLE_USERID_2=mspiggy/barfoo
         - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
 
+    - perl: '5.32-shrplib'
+      env:
+        - ORACLEV=19.6
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
 # Perl 5.28 variations
     - perl: '5.28'
       env:
@@ -113,6 +121,14 @@ jobs:
         - ORACLE_USERID_2=mspiggy/barfoo
         - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
 
+    - perl: '5.28'
+      env:
+        - ORACLEV=19.6
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
     - perl: '5.28-shrplib'
       env:
         - ORACLEV=11.2
@@ -140,6 +156,14 @@ jobs:
     - perl: '5.28-shrplib'
       env:
         - ORACLEV=18.5
+        - ORACLEDBV=11.2
+        - ORACLE_USERID=kermit/foobar
+        - ORACLE_USERID_2=mspiggy/barfoo
+        - ORACLE_DSN='dbi:Oracle://localhost:1521/XE'
+
+    - perl: '5.28-shrplib'
+      env:
+        - ORACLEV=19.6
         - ORACLEDBV=11.2
         - ORACLE_USERID=kermit/foobar
         - ORACLE_USERID_2=mspiggy/barfoo

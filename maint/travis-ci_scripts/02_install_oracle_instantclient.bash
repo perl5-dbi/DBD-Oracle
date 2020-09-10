@@ -2,25 +2,25 @@
 
 set -ex
 
-if [ "$ORACLEV" = "11.2" ]; then
+if [ "$ORACLEV" == "11.2" ]; then
     export LONGV="11.2.0.4.0"
 fi
-if [ "$ORACLEV" = "12.2" ]; then
+if [ "$ORACLEV" == "12.2" ]; then
     export LONGV="12.2.0.1.0"
 fi
-if [ "$ORACLEV" = "18.3" ]; then
+if [ "$ORACLEV" == "18.3" ]; then
     export LONGV="18.3.0.0.0"
 fi
-if [ "$ORACLEV" = "18.5" ]; then
+if [ "$ORACLEV" == "18.5" ]; then
     export LONGV="18.5.0.0.0"
 fi
-if [ "$ORACLEV" = "19.6" ]; then
+if [ "$ORACLEV" == "19.6" ]; then
     export LONGV="19.6.0.0.0"
 fi
 
+SUFFIX=""
 if [ -n "$ORACLEV" ]; then
-    SUFFIX=""
-    if [[ "$ORACLEV" = "18.3" || "$ORACLEV" = "18.5" ]]; then
+    if [[ "$ORACLEV" == "18.3" || "$ORACLEV" == "18.5" || "$ORACLEV" == "19.6" ]]; then
         SUFFIX="dbru"
     fi
     echo "Installing Oracle SDK $ORACLEV"
@@ -37,63 +37,44 @@ if [ -n "$ORACLEV" ]; then
     done
     for i in `ls *zip`; do unzip $i; done
 fi
-if [[ "$ORACLEV" = "18.3" || "$ORACLEV" = "18.5" ]]; then
+if [[ "$ORACLEV" == "12.2" || "$ORACLEV" == "18.3" || "$ORACLEV" == "18.5" || "$ORACLEV" == "19.6" ]]; then
     STUB=$(echo $ORACLEV | sed 's/\./_/')
-    echo "# Contents of instantclient-basic-linux.x64-$LONGV.zip"
+    MAJOR=$(echo $ORACLEV | sed 's/\.[0-9]//')
+    echo "# Moving contents of instantclient-basic-linux.x64-$LONGV$SUFFIX.zip"
     find "instantclient_$STUB"
     mv "instantclient_$STUB/adrci"   "$ORACLEV/client/bin/"
     mv "instantclient_$STUB/genezi"  "$ORACLEV/client/bin/"
     mv "instantclient_$STUB/uidrvci" "$ORACLEV/client/bin/"
-    mv instantclient_$STUB/{libclntshcore.so.18.1,libclntsh.so.18.1,libipc1.so,libmql1.so,libnnz18.so,libocci.so.18.1,libociei.so,libocijdbc18.so,libons.so,liboramysql18.so,ojdbc8.jar,xstreams.jar} $ORACLEV/client/lib/
-    echo "# Contents of instantclient-sqlplus-linux.x64-$LONGV.zip"
-    mv instantclient_$STUB/sqlplus $ORACLEV/client/bin/
-    mv instantclient_$STUB/glogin.sql instantclient_$STUB/libsqlplus.so instantclient_$STUB/libsqlplusic.so $ORACLEV/client/lib/
-    echo "# Contents of instantclient-sdk-linux.x64-$LONGV.zip"
+    mv instantclient_$STUB/{libclntshcore.so.$MAJOR.1,libclntsh.so.$MAJOR.1,libipc1.so,libmql1.so,libnnz$MAJOR.so,libocci.so.$MAJOR.1,libociei.so,libocijdbc$MAJOR.so,liboramysql$MAJOR.so,ojdbc8.jar,xstreams.jar} $ORACLEV/client/lib/
+    if [ "$MAJOR" != "19" ]; then
+        mv "instantclient_$STUB/libons.so" "$ORACLEV/client/lib/"
+    fi
+    echo "# Moving contents of instantclient-sqlplus-linux.x64-$LONGV.zip"
+    mv "instantclient_$STUB/sqlplus" "$ORACLEV/client/bin/"
+    mv "instantclient_$STUB/glogin.sql" "instantclient_$STUB/libsqlplus.so" "instantclient_$STUB/libsqlplusic.so" "$ORACLEV/client/lib/"
+    echo "# Moving contents of instantclient-sdk-linux.x64-$LONGV$SUFFIX.zip"
     mv instantclient_$STUB/sdk/include/*h /usr/include/oracle/$ORACLEV/client/
     mv instantclient_$STUB/sdk/demo/* /usr/share/oracle/$ORACLEV/client/
     mv instantclient_$STUB/sdk/ott /usr/share/oracle/$ORACLEV/client/
     mv instantclient_$STUB/sdk/ottclasses.zip $ORACLEV/client/lib/ottclasses.zip
-    ln -s libclntshcore.so.18.1 "$ORACLEV/client/lib/libclntshcore.so"
-    ln -s libclntsh.so.18.1 "$ORACLEV/client/lib/libclntsh.so"
-    ln -s libocci.so.18.1 "$ORACLEV/client/lib/libocci.so"
+    ln -s "libclntshcore.so.$MAJOR.1" "$ORACLEV/client/lib/libclntshcore.so"
+    ln -s "libclntsh.so.$MAJOR.1"     "$ORACLEV/client/lib/libclntsh.so"
+    ln -s "libocci.so.$MAJOR.1"       "$ORACLEV/client/lib/libocci.so"
     echo "# FYI What wasnt moved from Oracle zip files:"
     find "instantclient_$STUB"
     echo "# Clean up"
     rm -rf "instantclient_$STUB"
 fi
-if [ "$ORACLEV" = "12.2" ]; then
-    echo "# Contents of instantclient-basic-linux.x64-$LONGV.zip"
-    find instantclient_12_2
-    mv instantclient_12_2/adrci $ORACLEV/client/bin/
-    mv instantclient_12_2/genezi $ORACLEV/client/bin/
-    mv instantclient_12_2/uidrvci $ORACLEV/client/bin/
-    mv instantclient_12_2/{libclntshcore.so.12.1,libclntsh.so.12.1,libipc1.so,libmql1.so,libnnz12.so,libocci.so.12.1,libociei.so,libocijdbc12.so,libons.so,liboramysql12.so,ojdbc8.jar,xstreams.jar} $ORACLEV/client/lib/
-    echo "# Contents of instantclient-sqlplus-linux.x64-$LONGV.zip"
-    mv instantclient_12_2/sqlplus $ORACLEV/client/bin/
-    mv instantclient_12_2/glogin.sql instantclient_12_2/libsqlplus.so instantclient_12_2/libsqlplusic.so $ORACLEV/client/lib/
-    echo "# Contents of instantclient-sdk-linux.x64-$LONGV.zip"
-    mv instantclient_12_2/sdk/include/*h /usr/include/oracle/$ORACLEV/client/
-    mv instantclient_12_2/sdk/demo/* /usr/share/oracle/$ORACLEV/client/
-    mv instantclient_12_2/sdk/ott /usr/share/oracle/$ORACLEV/client/
-    mv instantclient_12_2/sdk/ottclasses.zip $ORACLEV/client/lib/ottclasses.zip
-    ln -s libclntshcore.so.12.1 $ORACLEV/client/lib/libclntshcore.so
-    ln -s libclntsh.so.12.1 $ORACLEV/client/lib/libclntsh.so
-    ln -s libocci.so.12.1 $ORACLEV/client/lib/libocci.so
-    echo "# FYI What wasnt moved from Oracle zip files:"
-    find instantclient_12_2
-    echo "# Clean up"
-    rm -rf instantclient_12_2
-fi
 if [ "$ORACLEV" = "11.2" ]; then
-    echo "# Contents of instantclient-basic-linux.x64-$LONGV.zip"
+    echo "# Moving contents of instantclient-basic-linux.x64-$LONGV.zip"
     mv instantclient_11_2/adrci $ORACLEV/client/bin/
     mv instantclient_11_2/genezi $ORACLEV/client/bin/
     mv instantclient_11_2/uidrvci $ORACLEV/client/bin/
     mv instantclient_11_2/{libclntsh.so.11.1,libnnz11.so,libocci.so.11.1,libociei.so,libocijdbc11.so,ojdbc5.jar,ojdbc6.jar,xstreams.jar} $ORACLEV/client/lib/
-    echo "# Contents of instantclient-sqlplus-linux.x64-$LONGV.zip"
+    echo "# Moving contents of instantclient-sqlplus-linux.x64-$LONGV.zip"
     mv instantclient_11_2/sqlplus $ORACLEV/client/bin/
     mv instantclient_11_2/glogin.sql instantclient_11_2/libsqlplus.so instantclient_11_2/libsqlplusic.so $ORACLEV/client/lib/
-    echo "# Contents of instantclient-sdk-linux.x64-$LONGV.zip"
+    echo "# Moving contents of instantclient-sdk-linux.x64-$LONGV.zip"
     mv instantclient_11_2/sdk/include/*h /usr/include/oracle/$ORACLEV/client/
     mv instantclient_11_2/sdk/demo/* /usr/share/oracle/$ORACLEV/client/
     mv instantclient_11_2/sdk/ott /usr/share/oracle/$ORACLEV/client/
