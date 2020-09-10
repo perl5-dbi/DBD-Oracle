@@ -1,5 +1,8 @@
 #!perl
 
+use strict;
+use warnings;
+
 $| = 1;
 
 ## ----------------------------------------------------------------------------
@@ -9,8 +12,6 @@ $| = 1;
 
 # This needs to be the very very first thing
 BEGIN { eval 'use threads; use threads::shared;' }
-use strict;
-use warnings;
 
 use lib 't/lib';
 use DBDOracleTestLib qw/ oracle_test_dsn db_handle /;
