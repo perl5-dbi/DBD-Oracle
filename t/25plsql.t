@@ -30,7 +30,7 @@ if ($dbh) {
         plan skip_all =>
 'Oracle server either does not support pl/sql or it is not properly installed';
     }
-    plan tests => 82;
+    plan tests => 86;
 }
 else {
     plan skip_all => "Unable to connect to Oracle \n";
@@ -325,13 +325,47 @@ if (1) {
     is( "@r", "@s2", 'ref = sql' );
 }
 
-# test bind_param_inout of param that's not assigned to in executed statement
-# See http://www.mail-archive.com/dbi-users@perl.org/msg18835.html
+SKIP: {
+   # test bind_param_inout of param that's not assigned to in executed statement
+   # Github Issue #70
+   # Also see http://www.mail-archive.com/dbi-users@perl.org/msg18835.html
+
+   # Known bad OCI versions
+   my @bad_oci_vers = (9.2,18.3,18.5,19.6);
+
+   skip 'Client version is known to have issue', 4
+     if grep { $_ == DBD::Oracle::ORA_OCI() } @bad_oci_vers;
+
+   my $sth = $dbh->prepare(
+      q(
+      BEGIN
+ --     :p1 := :p1 ;
+ --     :p2 := :p2 ;
+        IF  :p2 != :p3 THEN
+            :p1 := 'AAA' ;
+            :p2 := 'Z' ;
+        END IF ;
+      END ;)
+   );
+
+   my ( $p1, $p2, $p3 ) = ( 'Hello', 'Y', 'Y' );
+   $sth->bind_param_inout( ':p1', \$p1, 30 );
+   $sth->bind_param_inout( ':p2', \$p2, 1 );
+   $sth->bind_param_inout( ':p3', \$p3, 1 );
+   note("Before p1=[$p1] p2=[$p2] p3=[$p3]\n");
+   ok( $sth->execute, 'test bind_param_inout for non assigned' );
+   is( $p1, 'Hello', 'p1 ok' );
+   is( $p2, 'Y',     'p2 ok' );
+   is( $p3, 'Y',     'p3 ok' );
+   note("After p1=[$p1] p2=[$p2] p3=[$p3]\n");
+}
+
+# test bind_paraminout the correct way (avoids the above issue if present)
 my $sth = $dbh->prepare(
     q(
     BEGIN
- --     :p1 := :p1 ;
- --     :p2 := :p2 ;
+        :p1 := :p1 ;
+        :p2 := :p2 ;
         IF  :p2 != :p3 THEN
             :p1 := 'AAA' ;
             :p2 := 'Z' ;
@@ -345,7 +379,7 @@ END ;)
     $sth->bind_param_inout( ':p2', \$p2, 1 );
     $sth->bind_param_inout( ':p3', \$p3, 1 );
     note("Before p1=[$p1] p2=[$p2] p3=[$p3]\n");
-    ok( $sth->execute, 'test bind_param_inout for non assigned' );
+    ok( $sth->execute, 'test bind_param_inout for properly assigned' );
     is( $p1, 'Hello', 'p1 ok' );
     is( $p2, 'Y',     'p2 ok' );
     is( $p3, 'Y',     'p3 ok' );
