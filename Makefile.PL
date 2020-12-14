@@ -1702,7 +1702,7 @@ sub get_client_version {
         $client_version_full = $force_version;
     }
 
-    if ($client_version_full && $client_version_full !~ m/^(7|8|9|1\d)\.\d+/
+    if ($client_version_full && $client_version_full !~ m/^([789]|[12][0-9])\.[0-9]+/
     ) {
         print "Oracle version seems to be $client_version_full but that looks wrong so I'll ignore it.\n";
         $client_version_full = "";
