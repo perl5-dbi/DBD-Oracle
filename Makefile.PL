@@ -61,7 +61,7 @@ my %opts = (
                           "ExtUtils::MakeMaker" => 0,
                           "Test::Simple" => '0.90'},
        resources => {
-           bugtracker => 'https://github.com/perl5-dbi/DBD-Oracle/issues',
+           bugtracker => { web => 'https://github.com/perl5-dbi/DBD-Oracle/issues'},
            homepage => 'https://metacpan.org/pod/DBD::Oracle',
            repository => {
                type => 'git',
