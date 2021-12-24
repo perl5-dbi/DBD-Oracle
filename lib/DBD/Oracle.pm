@@ -487,24 +487,23 @@ SQL
         }
         else {
                $SQL = <<'SQL';
-SELECT *
-  FROM
-(
-  SELECT /*+ CHOOSE */
-       NULL         TABLE_CAT
-     , t.OWNER      TABLE_SCHEM
-     , t.TABLE_NAME TABLE_NAME
-     , decode(t.OWNER
-          , 'SYS'    , 'SYSTEM '
-          , 'SYSTEM' , 'SYSTEM '
-          , '' ) || t.TABLE_TYPE TABLE_TYPE
-     , c.COMMENTS   REMARKS
-  FROM ALL_TAB_COMMENTS c
-     , ALL_CATALOG      t
- WHERE c.OWNER      (+) = t.OWNER
-   AND c.TABLE_NAME (+) = t.TABLE_NAME
-   AND c.TABLE_TYPE (+) = t.TABLE_TYPE
-)
+    select * FROM (
+        select /*+ CHOOSE */
+        NULL TABLE_CAT
+         , t.OWNER      TABLE_SCHEM
+         , t.TABLE_NAME TABLE_NAME
+         , decode(t.OWNER
+         , 'SYS'    , 'SYSTEM '
+         , 'SYSTEM' , 'SYSTEM '
+         , '' ) || DECODE(mv.MVIEW_NAME, NULL, t.TABLE_TYPE, 'VIEW' ) TABLE_TYPE
+         , c.COMMENTS   REMARKS
+    FROM ALL_TAB_COMMENTS c
+    RIGHT JOIN  ALL_CATALOG t on t.OWNER = c.OWNER
+        and t.TABLE_NAME = c.TABLE_NAME
+        and t.TABLE_TYPE = c.TABLE_TYPE
+    LEFT JOIN ALL_MVIEWS mv on mv.OWNER = t.OWNER
+        and mv.MVIEW_NAME = t.TABLE_NAME
+    )
 SQL
                if ( defined $SchVal ) {
                       push @Where, "TABLE_SCHEM LIKE '$SchVal' ESCAPE '\\'";
