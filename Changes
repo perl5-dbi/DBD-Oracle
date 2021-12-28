@@ -2,6 +2,10 @@ Revision history for DBD::Oracle
 
 {{$NEXT}}
 
+1.82      2021-12-29
+
+  Second try at github #130.  Still not fully cooperating but better.
+
 1.81      2021-12-24
 
   [BUG FIXES]
