@@ -1,8 +1,9 @@
 Revision history for DBD::Oracle
 
-{{$NEXT}}
+1.83
 
   Build improvements on Debian-ish systems (GH#112, Alex Muntada)
+  Add rpath to ORACLE_HOME to DBD/Oracle/Oracle.bundle (GH#129, hackonhagland).
 
 1.82      2021-12-29
 
