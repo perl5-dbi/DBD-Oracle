@@ -1541,6 +1541,8 @@ sub find_headers {
 
     # compensate for case where final .0 isn't in the install directory name
     (my $client_version_trim = $client_version_full) =~ s/\.0$//;
+    # for case where point is not in install directory name. OCI 21+
+    (my $client_version_major = $client_version) =~ s/\..*$//;
 
     my @try = grep { -d $_ } ( # search the ORACLE_HOME we're using first
        # --- Traditional full-install locations
@@ -1557,15 +1559,19 @@ sub find_headers {
            $client_version,
            $client_version_trim,
            $client_version_full,
+           $client_version_major,
 
        #"/include/oracle/$client_version_full/client",       # Instant Client for RedHat FC3
        #"/include/oracle/$client_version_trim/client",       # Instant Client for RedHat FC3
+       #"/include/oracle/$client_version_major/client",      # Instant Client RPM (21+)
        #"/usr/include/oracle/$client_version/client64",      # Instant Client 11.1 and up
        #"/usr/include/oracle/$client_version/client",        # Instant Client 11.1 and up
        #"/usr/include/oracle/$client_version_full/client64", # Instant Client 64
        #"/usr/include/oracle/$client_version_full/client",   # Instant Client for RedHat FC4
        #"/usr/include/oracle/$client_version_trim/client64", # Instant Client 64
+       #"/usr/include/oracle/$client_version_major/client64",# Instant Client RPM (21+)
        #"/usr/include/oracle/$client_version_trim/client",   # Instant Client for RedHat FC4
+       #"/usr/include/oracle/$client_version_major/client",  # Instant Client RPM (21+)
     );
 
    # Add /usr/include/oracle based on the oracle home location if oracle home is under
