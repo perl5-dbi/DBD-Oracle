@@ -33,34 +33,48 @@ else {
 # check that our db handle is good
 isa_ok( $dbh, 'DBI::db' );
 
-my $table = table('table_embed');
-my $type = $table . 'a_type';
+# get the user's privileges
+my $privs_sth = $dbh->prepare('SELECT PRIVILEGE from session_privs');
+$privs_sth->execute;
+my @privileges = map { $_->[0] } @{ $privs_sth->fetchall_arrayref };
 
-#do not warn if already there
-eval {
-    local $dbh->{PrintError} = 0;
-    force_drop_table( $dbh, $table );
-    $dbh->do(qq{DROP TYPE $type });
-};
-$dbh->do(qq{CREATE OR REPLACE TYPE $type AS varray(10) OF varchar(30) });
+SKIP: {
 
-$dbh->do(qq{ CREATE TABLE $table ( aa_type $type) });
+   skip q{don't have permission to create type} => 3
+      unless grep { $_ eq 'CREATE TYPE' } @privileges;
+   skip q{don't have permission to create table} => 3
+      unless grep { $_ eq 'CREATE TABLE' } @privileges;
 
-$dbh->do("insert into $table values ($type('1','2','3','4','5'))");
+   my $table = table('table_embed');
+   my $type = $table . 'a_type';
 
-# simple execute
-my $sth;
-ok( $sth = $dbh->prepare("select * from $table"),
-    '... Prepare should return true' );
-my $problems;
-ok( $sth->execute(), '... Select should return true' );
+   #do not warn if already there
+   eval {
+      local $dbh->{PrintError} = 0;
+      force_drop_table( $dbh, $table );
+      $dbh->do(qq{DROP TYPE $type });
+   };
+   $dbh->do(qq{CREATE OR REPLACE TYPE $type AS varray(10) OF varchar(30) });
 
-while ( my ($a) = $sth->fetchrow() ) {
-    $problems = scalar(@$a);
+   $dbh->do(qq{ CREATE TABLE $table ( aa_type $type) });
+
+   $dbh->do("insert into $table values ($type('1','2','3','4','5'))");
+
+   # simple execute
+   my $sth;
+   ok( $sth = $dbh->prepare("select * from $table"),
+      '... Prepare should return true' );
+   my $problems;
+   ok( $sth->execute(), '... Select should return true' );
+
+   while ( my ($a) = $sth->fetchrow() ) {
+      $problems = scalar(@$a);
+   }
+
+   cmp_ok( scalar($problems), '==', 5, '... we should have 5 items' );
+
+   drop_table($dbh, $table);
+
+   $dbh->do("drop type $type") unless $ENV{DBD_SKIP_TABLE_DROP};
+
 }
-
-cmp_ok( scalar($problems), '==', 5, '... we should have 5 items' );
-
-drop_table($dbh, $table);
-
-$dbh->do("drop type $type") unless $ENV{DBD_SKIP_TABLE_DROP};
