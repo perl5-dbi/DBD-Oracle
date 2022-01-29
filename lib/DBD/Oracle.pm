@@ -5554,11 +5554,11 @@ Oracle.ex directory
 
 =item DBD::Oracle Tutorial
 
-http://www.pythian.com/blogs/wp-content/uploads/introduction-dbd-oracle.html
+https://blog.pythian.com/wp-content/uploads/introduction-dbd-oracle.html
 
 =item Oracle Instant Client
 
-http://www.oracle.com/technology/tech/oci/instantclient/index.html
+https://www.oracle.com/database/technologies/instant-client/downloads.html
 
 =item Oracle on Linux
 
@@ -5568,18 +5568,16 @@ http://www.ixora.com.au/
 
 ora_explain supplied and installed with DBD::Oracle.
 
-http://www.orafaq.com/
+https://www.orafaq.com/
 
-http://vonnieda.org/oracletool/
+https://www.oracletool.com/
 
 =item Commercial Oracle Tools and Links
 
 Assorted tools and references for general information.
 No recommendation implied.
 
-http://www.platinum.com
-
-http://www.SoftTreeTech.com
+https://www.SoftTreeTech.com
 
 Also PL/Vision from RevealNet and Steven Feuerstein, and
 "Q" from Savant Corporation.
