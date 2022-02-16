@@ -321,12 +321,12 @@
 	OCIAttrGet_log_stat(imp_sth, stmhp, OCI_HTYPE_STMT,         \
 		(void*)(p1), (l), (a), imp_sth->errhp, stat)
 
-#define OCIAttrSet_log_stat(impxxh,th,ht,ah,s1,a,eh,stat)   \
+#define OCIAttrSet_log_stat(impxxh,th,ht,ah,s1,a,eh,stat)   do{\
 	stat=OCIAttrSet(th,ht,ah,s1,a,eh);				\
 	(DBD_OCI_TRACEON(impxxh)) ? PerlIO_printf(DBD_OCI_TRACEFP(impxxh), \
 		"%sAttrSet(%p,%s, %p,%lu,Attr=%s,%p)=%s\n",			\
 		OciTp, (void*)th,oci_hdtype_name(ht),(void *)ah,ul_t(s1),oci_attr_name(a),(void*)eh,	\
-		oci_status_name(stat)),stat : stat
+		oci_status_name(stat)),stat : stat; }while(0)
 
 #define OCIBindByName_log_stat(impsth,sh,bp,eh,p1,pl,v,vs,dt,in,al,rc,mx,cu,md,stat) \
 	stat=OCIBindByName(sh,bp,eh,p1,pl,v,vs,dt,in,al,rc,mx,cu,md);	\
@@ -369,17 +369,17 @@
 		(ub1)opt,(ub1)il,(ub1)ot,(void*)dh,				\
 		oci_status_name(stat)),stat : stat
 
-#define OCIDescriptorAlloc_ok(impxxh,envhp, p1, t)              \
+#define OCIDescriptorAlloc_ok(impxxh,envhp, p1, t)             do{ \
 	if (DBD_OCI_TRACEON(impxxh)) PerlIO_printf(DBD_OCI_TRACEFP(impxxh), \
 		"%sDescriptorAlloc(%p,%p,%s,0,0)\n",					\
 		OciTp,(void*)envhp,(void*)(p1),oci_hdtype_name(t));			\
 	if (OCIDescriptorAlloc((envhp), (void**)(p1), (t), 0, 0)==OCI_SUCCESS);	\
-	else croak("OCIDescriptorAlloc (type %d) failed",t)
+	else croak("OCIDescriptorAlloc (type %d) failed",t); }while(0)
 
-#define OCIDescriptorFree_log(impxxh,d,t)                       \
+#define OCIDescriptorFree_log(impxxh,d,t)                       do{\
 	if (DBD_OCI_TRACEON(impxxh)) PerlIO_printf(DBD_OCI_TRACEFP(impxxh), \
 		"%sDescriptorFree(%p,%s)\n", OciTp, (void*)d,oci_hdtype_name(t));	\
-	OCIDescriptorFree(d,t)
+	OCIDescriptorFree(d,t); }while(0)
 
 #define OCIEnvInit_log_stat(impdbh,ev,md,xm,um,stat)    \
 	stat=OCIEnvInit(ev,md,xm,um);					\
@@ -407,18 +407,18 @@
 	if (stat==OCI_SUCCESS) ;					\
 	else croak("OCIHandleAlloc(%s) failed",oci_hdtype_name(t))
 
-#define OCIHandleFree_log_stat(impxxh,hp,t,stat)    \
+#define OCIHandleFree_log_stat(impxxh,hp,t,stat)   do{ \
 	stat=OCIHandleFree(	(hp), (t));				\
-	(DBD_OCI_TRACEON(impxxh)) ? PerlIO_printf(DBD_OCI_TRACEFP(impxxh), \
+	if(DBD_OCI_TRACEON(impxxh)) PerlIO_printf(DBD_OCI_TRACEFP(impxxh), \
 		"%sHandleFree(%p,%s)=%s\n",OciTp,(void*)hp,oci_hdtype_name(t),		\
-		oci_status_name(stat)),stat : stat
+		oci_status_name(stat)); }while(0)
 
-#define OCILobGetLength_log_stat(impxxh,sh,eh,lh,l,stat)    \
+#define OCILobGetLength_log_stat(impxxh,sh,eh,lh,l,stat)  do{  \
 	stat=OCILobGetLength(sh,eh,lh,l);				\
 	(DBD_OCI_TRACEON(impxxh)) ? PerlIO_printf(DBD_OCI_TRACEFP(impxxh), \
 		"%sLobGetLength(%p,%p,%p,%p)=%s\n",				\
 		OciTp, (void*)sh,(void*)eh,(void*)lh,pul_t(l),		\
-		oci_status_name(stat)),stat : stat
+		oci_status_name(stat)),stat : stat; }while(0)
 
 
 #define OCILobGetChunkSize_log_stat(impdbh,sh,eh,lh,cs,stat)    \

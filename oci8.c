@@ -15,6 +15,7 @@
 #include <utf8.h>
 #endif
 
+#undef sv_set_undef
 #define sv_set_undef(sv) if (SvROK(sv)) sv_unref(sv); else SvOK_off(sv)
 
 DBISTATE_DECLARE;
@@ -879,15 +880,28 @@ oci_error_err(SV *h, OCIError *errhp, sword status, char *what, sb4 force_err)
 	dTHX;
 	D_imp_xxh(h);
 	sb4 errcode;
+        int utf8_is_implied = 0;
 	SV *errstr_sv = sv_newmortal();
 	SV *errcode_sv = sv_newmortal();
 	errcode = oci_error_get(imp_xxh, errhp, status, what, errstr_sv,
                             DBIc_DBISTATE(imp_xxh)->debug);
-	if (CSFORM_IMPLIES_UTF8(SQLCS_IMPLICIT)) {
+
+        if(DBIc_TYPE(imp_xxh) == DBIt_ST)
+        {
+            imp_sth_t * imp_sth = (imp_sth_t*)imp_xxh;
+            D_imp_dbh_from_sth;
+            utf8_is_implied = CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT);
+        }
+        else if(DBIc_TYPE(imp_xxh) == DBIt_DB)
+            utf8_is_implied = CSFORM_IMPLIES_UTF8((imp_dbh_t *)imp_xxh, SQLCS_IMPLICIT);
+        else if(DBIc_TYPE(imp_xxh) == DBIt_DR)
+            utf8_is_implied = CSFORM_IMPLIES_UTF8((imp_drh_t *)imp_xxh, SQLCS_IMPLICIT);
+
+	if (utf8_is_implied) {
 #ifdef sv_utf8_decode
-	sv_utf8_decode(errstr_sv);
+            sv_utf8_decode(errstr_sv);
 #else
-	SvUTF8_on(errstr_sv);
+            SvUTF8_on(errstr_sv);
 #endif
 	}
 
@@ -1468,7 +1482,7 @@ fetch_func_varfield(SV *sth, imp_fbh_t *fbh, SV *dest_sv)
 			}
 	}
 	sv_setpvn(dest_sv, p, (STRLEN)datalen);
-	if (CSFORM_IMPLIES_UTF8(fbh->csform))
+	if (CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform))
 		SvUTF8_on(dest_sv);
 	} else {
 #else
@@ -1717,7 +1731,7 @@ dbd_rebind_ph_lob(SV *sth, imp_sth_t *imp_sth, phs_t *phs)
 					return oci_error(sth, imp_sth->errhp, status, "OCILobCharSetId");
 #endif /* OCI_ATTR_CHARSET_ID */
 		/* if data is utf8 but charset isn't then switch to utf8 csid */
-				csid = (SvUTF8(phs->sv) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(csform);
+				csid = (SvUTF8(phs->sv) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(imp_dbh, csform);
 				phs->csid = csid;
 				phs->csform = csform;
 			}
@@ -1748,6 +1762,7 @@ ora_blob_read_mb_piece(SV *sth, imp_sth_t *imp_sth, imp_fbh_t *fbh,
   SV *dest_sv, long offset, ub4 len, long destoffset)
 {
 	dTHX;
+	D_imp_dbh_from_sth;
 	ub4 loblen = 0;
 	ub4 buflen;
 	ub4 amtp = 0;
@@ -1853,7 +1868,7 @@ ora_blob_read_mb_piece(SV *sth, imp_sth_t *imp_sth, imp_fbh_t *fbh,
 	SvCUR_set(dest_sv, byte_destoffset+amtp);
 	*SvEND(dest_sv) = '\0'; /* consistent with perl sv_setpvn etc	*/
 	SvPOK_on(dest_sv);
-	if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(csform))
+	if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(imp_dbh, csform))
 		SvUTF8_on(dest_sv);
 
 	return 1;
@@ -1865,6 +1880,7 @@ ora_blob_read_piece(SV *sth, imp_sth_t *imp_sth, imp_fbh_t *fbh, SV *dest_sv,
 			long offset, UV len, long destoffset)
 {
 	dTHX;
+	D_imp_dbh_from_sth;
 	ub4 loblen	= 0;
 	ub4 buflen;
 	ub4 amtp 	= 0;
@@ -1929,7 +1945,7 @@ ora_blob_read_piece(SV *sth, imp_sth_t *imp_sth, imp_fbh_t *fbh, SV *dest_sv,
 	/* so for CLOBs that'll be returned as UTF8 we need more bytes that chars */
 	/* XXX the x4 here isn't perfect - really the code should be changed to loop */
 
-	if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(csform)) {
+	if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(imp_dbh, csform)) {
 		buflen = amtp * 4;
 	/* XXX destoffset would be counting chars here as well */
 		SvGROW(dest_sv, (destoffset*4) + buflen + 1);
@@ -1972,7 +1988,7 @@ ora_blob_read_piece(SV *sth, imp_sth_t *imp_sth, imp_fbh_t *fbh, SV *dest_sv,
 			sv_set_undef(dest_sv);	/* signal error */
 			return 0;
 		}
-		if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(csform))
+		if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(imp_dbh, csform))
 			SvUTF8_on(dest_sv);
 	}
 	else {
@@ -2003,6 +2019,7 @@ static int
 fetch_lob(SV *sth, imp_sth_t *imp_sth, OCILobLocator* lobloc, int ftype, SV *dest_sv, char *name)
 {
 	dTHX;
+	D_imp_dbh_from_sth;
 	ub4 loblen	= 0;
 	ub4 buflen	= 0;
 	ub4 amtp 	= 0;
@@ -2155,9 +2172,9 @@ fetch_lob(SV *sth, imp_sth_t *imp_sth, OCILobLocator* lobloc, int ftype, SV *des
 	/* tell perl what we've put in its dest_sv */
 	SvCUR(dest_sv) = amtp;
 	*SvEND(dest_sv) = '\0';
-	if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(csform)) /* Don't set UTF8 on BLOBs */
+        if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(imp_dbh, csform)) /* Don't set UTF8 on BLOBs */
  		SvUTF8_on(dest_sv);
-		ora_free_templob(sth, imp_sth, lobloc);
+        ora_free_templob(sth, imp_sth, lobloc);
 	}
 	else {			/* LOB length is 0 */
 		assert(amtp == 0);
@@ -2321,8 +2338,8 @@ static void get_attr_val(SV *sth,AV *list,imp_fbh_t *fbh, text  *name , OCITypeC
                                    status);
 
 		if (typecode == OCI_TYPECODE_TIMESTAMP_TZ || typecode == OCI_TYPECODE_TIMESTAMP_LTZ){
-			char s_tz_hour[3]="000";
-			char s_tz_min[3]="000";
+			char s_tz_hour[6]="000";
+			char s_tz_min[6]="000";
 			sb1 tz_hour;
 			sb1 tz_minute;
 			status = OCIDateTimeGetTimeZoneOffset (fbh->imp_sth->envhp,
@@ -2694,7 +2711,7 @@ static int
 fetch_func_oci_object(SV *sth, imp_fbh_t *fbh,SV *dest_sv)
 {
 	dTHX;
-    D_imp_sth(sth);
+        D_imp_sth(sth);
 
 	if (DBIc_DBISTATE(imp_sth)->debug >= 4 || dbd_verbose >= 4 ) {
 		PerlIO_printf(DBIc_LOGPIO(imp_sth),
@@ -2726,6 +2743,7 @@ fetch_clbk_lob(SV *sth, imp_fbh_t *fbh,SV *dest_sv){
 
 	dTHX;
 	D_imp_sth(sth);
+	D_imp_dbh_from_sth;
 	fb_ary_t *fb_ary = fbh->fb_ary;
 
 	ub4 actual_bufl=imp_sth->piece_size*(fb_ary->piece_count)+fb_ary->bufl;
@@ -2756,7 +2774,7 @@ fetch_clbk_lob(SV *sth, imp_fbh_t *fbh,SV *dest_sv){
 		sv_setpvn(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
 	} else {
 		sv_setpvn(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
-		if (CSFORM_IMPLIES_UTF8(fbh->csform) ){
+		if (CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform) ){
 			SvUTF8_on(dest_sv);
 		}
 	}
@@ -2769,6 +2787,7 @@ fetch_get_piece(SV *sth, imp_fbh_t *fbh,SV *dest_sv)
 {
 	dTHX;
 	D_imp_sth(sth);
+	D_imp_dbh_from_sth;
 	fb_ary_t *fb_ary = fbh->fb_ary;
 	ub4 buflen		 = fb_ary->bufl;
 	ub4 actual_bufl	 = 0;
@@ -2859,7 +2878,7 @@ fetch_get_piece(SV *sth, imp_fbh_t *fbh,SV *dest_sv)
 		sv_setpvn(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
 		if (fbh->ftype != SQLT_BIN){
 
-			if (CSFORM_IMPLIES_UTF8(fbh->csform) ){ /* do the UTF 8 magic*/
+			if (CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform) ){ /* do the UTF 8 magic*/
 				SvUTF8_on(dest_sv);
 			}
 		}
@@ -3554,7 +3573,7 @@ dbd_describe(SV *h, imp_sth_t *imp_sth)
             avg_width = fbh->dbsize / 2;
             /* FALLTHRU */
           case	ORA_CHAR:				/* CHAR		*/
-            if ( CSFORM_IMPLIES_UTF8(fbh->csform) && !CS_IS_UTF8(fbh->csid) )
+            if ( CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform) && !CS_IS_UTF8(fbh->csid) )
                 fbh->disize = fbh->dbsize * 4;
             else
                 fbh->disize = fbh->dbsize;
@@ -3616,7 +3635,7 @@ dbd_describe(SV *h, imp_sth_t *imp_sth)
             }
             else {
 
-                if ( CSFORM_IMPLIES_UTF8(fbh->csform) && !CS_IS_UTF8(fbh->csid) )
+                if ( CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform) && !CS_IS_UTF8(fbh->csid) )
                     fbh->disize = long_readlen * 4;
                 else
                     fbh->disize = long_readlen;
@@ -4194,7 +4213,7 @@ dbd_st_fetch(SV *sth, imp_sth_t *imp_sth){
 								fbh->req_type, i+1);
                             /* issue warning */
                             DBIh_SET_ERR_CHAR(sth, imp_xxh, "0", 1, errstr, Nullch, Nullch);
-                            if (CSFORM_IMPLIES_UTF8(fbh->csform) ){
+                            if (CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform) ){
                                 SvUTF8_on(sv);
                             }
 						}
@@ -4202,7 +4221,7 @@ dbd_st_fetch(SV *sth, imp_sth_t *imp_sth){
 					else
 #endif /* DBISTATE_VERSION > 94 */
 					{
-						if (CSFORM_IMPLIES_UTF8(fbh->csform) ){
+						if (CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform) ){
 							SvUTF8_on(sv);
 						}
 					}
@@ -4222,7 +4241,7 @@ dbd_st_fetch(SV *sth, imp_sth_t *imp_sth){
 					/* Copy the truncated value anyway, it may be of use,	*/
 					/* but it'll only be accessible via prior bind_column()	*/
 					sv_setpvn(sv, (char *)row_data,fb_ary->arlen[imp_sth->rs_array_idx]);
- 					if ((CSFORM_IMPLIES_UTF8(fbh->csform)) && (fbh->ftype != SQLT_BIN)){
+ 					if ((CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform)) && (fbh->ftype != SQLT_BIN)){
 						SvUTF8_on(sv);
 					}
 				}
@@ -4271,7 +4290,7 @@ ora_parse_uid(imp_dbh_t *imp_dbh, char **uidp, char **pwdp)
 		return OCI_CRED_EXT;
 	}
 #ifdef ORA_OCI_112
-	if (!imp_dbh->using_drcp) {
+	if (0 == (imp_dbh->flags & ORA_IMP_DBH_USING_DRCP)) {
 #endif
 		OCIAttrSet_log_stat(imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION,
 				*uidp, strlen(*uidp),
@@ -4293,9 +4312,7 @@ ora_db_reauthenticate(SV *dbh, imp_dbh_t *imp_dbh, char *uid, char *pwd)
 	dTHX;
 	sword status;
 #ifdef ORA_OCI_112
-	if (imp_dbh->using_drcp) {
-		return 0;
-	}
+	if (imp_dbh->flags & ORA_IMP_DBH_USING_DRCP) return 0;
 #endif
 	/* XXX should possibly create new session before ending the old so	*/
 	/* that if the new one can't be created, the old will still work.	*/
@@ -4411,6 +4428,7 @@ static int
 init_lob_refetch(SV *sth, imp_sth_t *imp_sth)
 {
 	dTHX;
+	D_imp_dbh_from_sth;
 	SV *sv;
 	SV *sql_select;
 	HV *lob_cols_hv = NULL;
@@ -4457,10 +4475,12 @@ init_lob_refetch(SV *sth, imp_sth_t *imp_sth)
 
 	if (status == OCI_SUCCESS) { /* There is a synonym, get the schema */
 		char *syn_schema=NULL;
-		char syn_name[100];
+		char *syn_name;
 		ub4  tn_len = 0, syn_schema_len = 0;
 
-		strncpy(syn_name,tablename,strlen(tablename));
+                Newx(syn_name, 1 + strlen(tablename), char);
+
+		strcpy(syn_name,tablename);
 		/* Put the synonym name here for later user */
 
 		OCIAttrGet_log_stat(imp_sth, imp_sth->dschp,  OCI_HTYPE_DESCRIBE,
@@ -4486,7 +4506,7 @@ init_lob_refetch(SV *sth, imp_sth_t *imp_sth)
                 "		lob refetch using a synonym named=%s for %s \n",
                 syn_name,tablename);
 
-
+                Safefree(syn_name);
 	}
 	OCIDescribeAny_log_stat(imp_sth, imp_sth->svchp, errhp, tablename, strlen(tablename),
 		(ub1)OCI_OTYPE_NAME, (ub1)1, (ub1)OCI_PTYPE_TABLE, imp_sth->dschp, status);
@@ -4558,7 +4578,7 @@ init_lob_refetch(SV *sth, imp_sth_t *imp_sth)
 		sv = newSViv(col_dbtype);
 		(void)sv_setpvn(sv, col_name, col_name_len);
 
-		if (CSFORM_IMPLIES_UTF8(SQLCS_IMPLICIT))
+		if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT))
 			SvUTF8_on(sv);
 
 		(void)SvIOK_on(sv);	/* "what a wonderful hack!" */
@@ -4854,7 +4874,7 @@ post_execute_lobs(SV *sth, imp_sth_t *imp_sth, ub4 row_count)	/* XXX leaks handl
 					return oci_error(sth, errhp, status, "OCILobCharSetId");
 #endif /* OCI_ATTR_CHARSET_ID */
 		/* if data is utf8 but charset isn't then switch to utf8 csid */
-				csid = (SvUTF8(phs->sv) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(csform);
+				csid = (SvUTF8(phs->sv) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(imp_dbh, csform);
 				fbh->csid = csid;
 				fbh->csform = csform;
 			}

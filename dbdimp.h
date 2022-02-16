@@ -17,34 +17,41 @@ struct taf_callback_st {
 
 typedef struct imp_fbh_st imp_fbh_t;
 
+/* shared dbh's will leak handles in    */
+/* dbd_dr_destroy(), see connect attr   */
+/* ora_dbh_share for more information   */
+#define ORA_IMP_DRH_LEAKS_HANDLES       1
+/* Each handle may have its own Charset settings, so we need some
+ * way to indicate if used charset is UTF8, to convert bytes to
+ * characters
+ */
+#define ORA_IMP_DBH_USING_DRCP          2
+#define ORA_IMP_DBH_SESSION_TAG_FOUND   4
 
 /* Define implementation specific driver handle data structure */
 struct imp_drh_st {
 	dbih_drc_t com;		/* MUST be first element in structure	*/
 	OCIEnv *envhp;		/* global environment handler, see also */
 						/* connect attr ora_envhp               */
-	bool leak_handles;	/* shared dbh's will leak handles in    */
-						/* dbd_dr_destroy(), see connect attr   */
-						/* ora_dbh_share for more information   */
-#ifdef ORA_OCI_112
-	HV *charset_hv;
 	HV *pool_hv;
-#endif
 	SV *ora_long;
 	SV *ora_trunc;
 	SV *ora_cache;
 	SV *ora_cache_o;		/* for ora_open() cache override */
+    ub2 cset;
+    ub2 ncset;
+	ub1 flags;          /* flags specific to this handle */
 };
 
 #ifdef ORA_OCI_112
+/* this is used when session comes from DRCP */
 typedef struct session_pool_st session_pool_t;
 struct session_pool_st {
-	OCIEnv		*envhp;
+    SV          *env_sv;
 	OCIError 	*errhp;
 	OCISPool	*poolhp;
 	OraText		*pool_name;
 	ub4		pool_namel;
-	int		active_sessions;
 };
 #endif
 
@@ -53,12 +60,13 @@ struct imp_dbh_st {
 	dbih_dbc_t com;		/* MUST be first element in structure	*/
 
 #ifdef USE_ITHREADS
-	int refcnt ;		/* keep track of duped handles. MUST be first after com */
+	int refcnt ;		/* keep track of duped handles */
 	struct imp_dbh_st * shared_dbh ; /* pointer to shared space from which to dup and keep refcnt */
 	SV *				shared_dbh_priv_sv ;
 #endif
 
 	void *(*get_oci_handle) _((imp_dbh_t *imp_dbh, int handle_type, int flags));
+    SV          *envhp_sv;  /* this SV contains pointer to envhp or session_pool_t */
 	OCIEnv 		*envhp;		/* session environment handler, this is mostly */
 							/* a copy of imp_drh->envhp, see also connect  */
 							/* attr ora_envhp                              */
@@ -67,10 +75,7 @@ struct imp_dbh_st {
 	OCISvcCtx 	*svchp;
 	OCISession	*seshp;
 #ifdef ORA_OCI_112
-	session_pool_t	*pool;
 	OraText		session_tag[50];
-	boolean		session_tag_found;
-	bool		using_drcp;
 	text		*pool_class;
 	ub4			pool_classl;
 	ub4			pool_min;
@@ -92,11 +97,14 @@ struct imp_dbh_st {
 	int RowCacheSize; /* both of these are defined by DBI spec*/
 	int RowsInCache;	/* this vaue is RO and cannot be set*/
 	int ph_type;		/* default oratype for placeholders */
-	ub1 ph_csform;		/* default charset for placeholders */
 	int parse_error_offset;	/* position in statement of last error */
 	int max_nested_cursors;	 /* limit on cached nested cursors per stmt */
 	int array_chunk_size;  /* the max size for an array bind */
     ub4 server_version; /* version of Oracle server */
+    ub2 cset;
+    ub2 ncset;
+	ub1 ph_csform;		/* default charset for placeholders */
+	ub1 flags;          /* flags specific to this handle */
 };
 
 #define DBH_DUP_OFF sizeof(dbih_dbc_t)
@@ -153,7 +161,7 @@ struct imp_sth_st {
 	int				eod_errno;
 	int				est_width;	/* est'd avg row width on-the-wire	*/
 	/* (In/)Out Parameter Details */
-	bool			has_inout_params;
+	int 			has_inout_params;
 	/* execute mode*/
 	/* will be using this alot later me thinks  */
 	ub4				exe_mode;
@@ -314,8 +322,6 @@ extern int dbd_verbose;
 extern int oci_warn;
 extern int ora_objects;
 extern int ora_ncs_buff_mtpl;
-extern ub2 charsetid;
-extern ub2 ncharsetid;
 extern ub2 us7ascii_csid;
 extern ub2 utf8_csid;
 extern ub2 al32utf8_csid;
@@ -330,11 +336,11 @@ extern ub2 al16utf16_csid;
  #define CS_IS_UTF16( cs ) ( cs == al16utf16_csid )
 
 
-#define CSFORM_IMPLIED_CSID(csform) \
-	((csform==SQLCS_NCHAR) ? ncharsetid : charsetid)
+#define CSFORM_IMPLIED_CSID(imp_xxh, csform) \
+	((csform==SQLCS_NCHAR) ? (imp_xxh)->ncset : (imp_xxh)->cset)
 
-#define CSFORM_IMPLIES_UTF8(csform) \
-	CS_IS_UTF8( CSFORM_IMPLIED_CSID( csform ) )
+#define CSFORM_IMPLIES_UTF8(imp_xxh, csform) \
+	CS_IS_UTF8( CSFORM_IMPLIED_CSID(imp_xxh, csform ) )
 
 
 void dbd_init_oci _((dbistate_t *dbistate));
@@ -392,10 +398,10 @@ ub4 ora_parse_uid _((imp_dbh_t *imp_dbh, char **uidp, char **pwdp));
 char *ora_sql_error _((imp_sth_t *imp_sth, char *msg));
 char *ora_env_var(char *name, char *buf, unsigned long size);
 
-#ifdef __CYGWIN32__
+#if defined(__CYGWIN__) || defined(__CYGWIN32__)
 void ora_cygwin_set_env(char *name, char *value);
 
-#endif /* __CYGWIN32__ */
+#endif /* __CYGWIN__ */
 
 sb4 dbd_phs_in _((dvoid *octxp, OCIBind *bindp, ub4 iter, ub4 index,
 			  dvoid **bufpp, ub4 *alenp, ub1 *piecep, dvoid **indpp));

@@ -331,7 +331,7 @@ SKIP: {
    # Also see http://www.mail-archive.com/dbi-users@perl.org/msg18835.html
 
    # Known bad OCI versions
-   my @bad_oci_vers = (9.2, 18.3, 18.5, 19.6, 19.9, 19.13, 21.4, 21.5);
+   my @bad_oci_vers = (9.2, 18.3, 18.5, 19.5, 19.6, 19.9, 19.13, 21.4, 21.5);
 
    skip 'Client version is known to have issue', 4
      if grep { $_ == DBD::Oracle::ORA_OCI() } @bad_oci_vers;

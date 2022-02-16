@@ -26,7 +26,7 @@
 #endif
 
 /* egcs-1.1.2 does not have _int64 */
-#if defined(__MINGW32__) || defined(__CYGWIN32__)
+#if defined(__MINGW32__) || defined(__CYGWIN32__) || defined(__CYGWIN__)
 #define _int64 long long
 #endif
 

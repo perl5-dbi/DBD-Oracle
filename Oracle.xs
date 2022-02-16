@@ -104,7 +104,7 @@ ora_env_var(name)
 		sv_setpv(sv, p);
 	ST(0) = sv;
 
-#if defined(__CYGWIN32__) || defined(__CYGWIN64__)
+#if defined(__CYGWIN32__) || defined(__CYGWIN64__) || defined(__CYGWIN__)
 void
 ora_cygwin_set_env(name, value)
 	char * name
@@ -485,7 +485,7 @@ ora_lob_write(dbh, locator, offset, data)
 	}
 #endif /* OCI_ATTR_CHARSET_ID */
 	/* if data is utf8 but charset isn't then switch to utf8 csid */
-	csid = (SvUTF8(data) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(csform);
+	csid = (SvUTF8(data) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(imp_dbh, csform);
 
 	OCILobWrite_log_stat(imp_dbh, imp_dbh->svchp, imp_dbh->errhp, locator,
 		&amtp, (ub4)offset,
@@ -546,7 +546,7 @@ ora_lob_append(dbh, locator, data)
 	}
 #endif /* OCI_ATTR_CHARSET_ID */
 	/* if data is utf8 but charset isn't then switch to utf8 csid */
-	csid = (SvUTF8(data) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(csform);
+	csid = (SvUTF8(data) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(imp_dbh, csform);
 	OCILobWriteAppend_log_stat(imp_dbh, imp_dbh->svchp, imp_dbh->errhp, locator,
 				   &amtp, bufp, (ub4)data_len, OCI_ONE_PIECE,
 				   NULL, NULL,
@@ -625,7 +625,7 @@ ora_lob_read(dbh, locator, offset, length)
             SvCUR(dest_sv) = amtp; /* always bytes here */
             *SvEND(dest_sv) = '\0';
             if (csform){
-                if (CSFORM_IMPLIES_UTF8(csform)){
+                if (CSFORM_IMPLIES_UTF8(imp_dbh, csform)){
                     SvUTF8_on(dest_sv);
                 }
             }
