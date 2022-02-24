@@ -2,6 +2,7 @@ Revision history for DBD::Oracle
 
 {{$NEXT}}
 
+  Big patch that should fix the crash if disconnect not called - (GH#111, Andrey Voropaev)
   Have find_headers() also search for header files based off the major version number - (GH#142, Wesley Hinds)
   Check for appropriate permissions before running 56embbeded.t tests - (#143, Wesley Hinds)
   Updated links in doc in Oracle.pm - (Gh#145, kjetillll)
