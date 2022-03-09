@@ -373,12 +373,13 @@ package DBD::Oracle;
 #not the capital ...
 
     sub ping {
-        my($dbh) = @_;
+        my $dbh = shift;
         local $@;
         my $ok = 0;
         eval {
             local $SIG{__DIE__};
-            local $SIG{__WARN__};
+            local $SIG{__WARN__} = sub { }
+                if $dbh->FETCH('PrintError');
             $ok=ora_ping($dbh);
         };
         return ($@) ? 0 : $ok;

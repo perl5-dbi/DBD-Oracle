@@ -395,6 +395,9 @@ ora_ping(dbh)
 #endif
  	text buf[2];
 	CODE:
+	if (!imp_dbh->envhp) {
+	    XSRETURN_IV(0);
+	}
 	/*when OCIPing not available,*/
 	/*simply does a call to OCIServerVersion which should make 1 round trip*/
 	/*later I will replace this with the actual OCIPing command*/
