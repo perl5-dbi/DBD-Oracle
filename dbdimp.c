@@ -946,6 +946,8 @@ dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, S
 			tracer(2, 3, "dbd_db_login6 skip connect\n");
 			/* tell our parent we've adopted an active child */
 			++DBIc_ACTIVE_KIDS(DBIc_PARENT_COM(imp_dbh));
+                        /* such handles have to be leaked because of memory issues. Sigh */
+                        imp_dbh->envhp_sv = NULL;
 			return 1;
 		}
 		/* not ACTIVE so connect not skipped */
@@ -1266,18 +1268,21 @@ dbd_db_destroy(SV *dbh, imp_dbh_t *imp_dbh)
 #endif
 
             val = imp_dbh->envhp_sv;
-            if(SvREFCNT(val) == 1) /* there is only 1 reference left, so I need to release resources */
+            if(val != NULL)
             {
-                tracer(3, 3, "Last user for environment\n");
+                if(SvREFCNT(val) == 1) /* there is only 1 reference left, so I need to release resources */
+                {
+                    tracer(3, 3, "Last user for environment\n");
 #ifdef ORA_OCI_112
-                /* check type of stored value */
-                if(imp_dbh->flags & ORA_IMP_DBH_USING_DRCP) /* this is DRCP entry */
-                    release_cached_pool(aTHX_ (imp_xxh_t *)imp_drh, val);
-                else
+                    /* check type of stored value */
+                    if(imp_dbh->flags & ORA_IMP_DBH_USING_DRCP) /* this is DRCP entry */
+                        release_cached_pool(aTHX_ (imp_xxh_t *)imp_drh, val);
+                    else
 #endif
-                release_cached_env(aTHX_ (imp_xxh_t *)imp_drh, val);
+                    release_cached_env(aTHX_ (imp_xxh_t *)imp_drh, val);
+                }
+                SvREFCNT_dec(val);
             }
-            SvREFCNT_dec(val);
 	}
 
 dbd_db_destroy_out:
