@@ -13,6 +13,7 @@ README.help.txt
 TESTING.md
 TODO
 cpanfile
+dbdcnx.c
 dbdimp.c
 dbdimp.h
 dbivport.h
@@ -63,7 +64,9 @@ t/10general.t
 t/12impdata.t
 t/14threads.t
 t/15nls.t
+t/15threads.t
 t/16cached.t
+t/16drcp.t
 t/20select.t
 t/21nchar.t
 t/22cset.t

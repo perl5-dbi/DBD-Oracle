@@ -22,10 +22,8 @@ $dbh->disconnect;
 
 if ( !$dbh->ora_can_taf ) {
 
-    eval {
-        $dbh = db_handle( { ora_taf_function => 'taf' } );
-    };
-    my $ev = $@;
+    $dbh = db_handle( { PrintError => 0, RaiseError => 0, ora_taf_function => 'taf' } );
+    my $ev = $dbh->errstr;
     like( $ev, qr/You are attempting to enable TAF/, "'$ev' (expected)" );
 }
 else {

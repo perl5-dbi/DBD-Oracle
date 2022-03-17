@@ -13,7 +13,14 @@ use Test::More;
 
 $| = 1;
 
-$ENV{NLS_DATE_FORMAT} = 'YYYY-MM-DD"T"HH24:MI:SS';
+if($^O eq 'cygwin')
+{
+    DBD::Oracle::ora_cygwin_set_env('NLS_DATE_FORMAT', 'YYYY-MM-DD"T"HH24:MI:SS');
+}
+else
+{
+    $ENV{NLS_DATE_FORMAT} = 'YYYY-MM-DD"T"HH24:MI:SS';
+}
 
 # create a database handle
 my $dbh = eval{ db_handle( {

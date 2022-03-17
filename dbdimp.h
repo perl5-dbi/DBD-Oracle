@@ -15,50 +15,51 @@ struct taf_callback_st {
 	SV   *dbh_ref;
 };
 
+
+typedef struct box_st box_t;
 typedef struct imp_fbh_st imp_fbh_t;
+
+/* this structure is used to communicate parameters of login */
+typedef struct dblogin_info_st dblogin_info_t;
+struct dblogin_info_st {
+    SV * dbh;
+    imp_dbh_t * imp_dbh;
+    SV * pool_class; /* this and next SV * is "mortal" */
+    SV * pool_tag;
+    char *dbname;
+    char *uid;
+    char *pwd;
+    char * cset;
+    char * ncset;
+    ub4 mode;
+    ub4 session_mode;
+#ifdef ORA_OCI_112
+	ub4			pool_min;
+	ub4			pool_max;
+	ub4			pool_incr;
+	ub4			pool_rlb;
+    ub4 driver_name_len;
+    char * driver_name;
+#endif
+};
 
 
 /* Define implementation specific driver handle data structure */
 struct imp_drh_st {
 	dbih_drc_t com;		/* MUST be first element in structure	*/
-	OCIEnv *envhp;		/* global environment handler, see also */
-						/* connect attr ora_envhp               */
-	bool leak_handles;	/* shared dbh's will leak handles in    */
-						/* dbd_dr_destroy(), see connect attr   */
-						/* ora_dbh_share for more information   */
-#ifdef ORA_OCI_112
-	HV *charset_hv;
-	HV *pool_hv;
-#endif
 	SV *ora_long;
 	SV *ora_trunc;
 	SV *ora_cache;
 	SV *ora_cache_o;		/* for ora_open() cache override */
 };
 
-#ifdef ORA_OCI_112
-typedef struct session_pool_st session_pool_t;
-struct session_pool_st {
-	OCIEnv		*envhp;
-	OCIError 	*errhp;
-	OCISPool	*poolhp;
-	OraText		*pool_name;
-	ub4		pool_namel;
-	int		active_sessions;
-};
-#endif
 
 /* Define implementation specific database handle data structure */
 struct imp_dbh_st {
 	dbih_dbc_t com;		/* MUST be first element in structure	*/
 
-#ifdef USE_ITHREADS
-	int refcnt ;		/* keep track of duped handles. MUST be first after com */
-	struct imp_dbh_st * shared_dbh ; /* pointer to shared space from which to dup and keep refcnt */
-	SV *				shared_dbh_priv_sv ;
-#endif
-
 	void *(*get_oci_handle) _((imp_dbh_t *imp_dbh, int handle_type, int flags));
+    box_t       *lock;  /* this contains pointer to slot that holds lock */
 	OCIEnv 		*envhp;		/* session environment handler, this is mostly */
 							/* a copy of imp_drh->envhp, see also connect  */
 							/* attr ora_envhp                              */
@@ -66,37 +67,24 @@ struct imp_dbh_st {
 	OCIServer 	*srvhp;
 	OCISvcCtx 	*svchp;
 	OCISession	*seshp;
-#ifdef ORA_OCI_112
-	session_pool_t	*pool;
-	OraText		session_tag[50];
-	boolean		session_tag_found;
-	bool		using_drcp;
-	text		*pool_class;
-	ub4			pool_classl;
-	ub4			pool_min;
-	ub4			pool_max;
-	ub4			pool_incr;
-	ub4			pool_rlb;
-	char		*driver_name;/*driver name user defined*/
-#endif
     SV          *taf_function; /*User supplied TAF functiomn*/
     taf_callback_t taf_ctx;
-    char		*client_info;  /*user defined*/
-    ub4			client_infol;
-	char		*module_name; /*module user defined */
-	ub4			module_namel;
-	char		*client_identifier;  /*user defined*/
-    ub4			client_identifierl;
-    char		*action;  /*user defined*/
-    ub4			actionl;
 	int RowCacheSize; /* both of these are defined by DBI spec*/
 	int RowsInCache;	/* this vaue is RO and cannot be set*/
 	int ph_type;		/* default oratype for placeholders */
-	ub1 ph_csform;		/* default charset for placeholders */
 	int parse_error_offset;	/* position in statement of last error */
 	int max_nested_cursors;	 /* limit on cached nested cursors per stmt */
 	int array_chunk_size;  /* the max size for an array bind */
     ub4 server_version; /* version of Oracle server */
+#ifdef ORA_OCI_112
+    SV * session_tag;
+#endif
+    ub2 cset;
+    ub2 ncset;
+	ub1 ph_csform;		/* default charset for placeholders */
+#if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
+    ub1 is_shared;
+#endif
 };
 
 #define DBH_DUP_OFF sizeof(dbih_dbc_t)
@@ -153,7 +141,7 @@ struct imp_sth_st {
 	int				eod_errno;
 	int				est_width;	/* est'd avg row width on-the-wire	*/
 	/* (In/)Out Parameter Details */
-	bool			has_inout_params;
+	int 			has_inout_params;
 	/* execute mode*/
 	/* will be using this alot later me thinks  */
 	ub4				exe_mode;
@@ -314,8 +302,6 @@ extern int dbd_verbose;
 extern int oci_warn;
 extern int ora_objects;
 extern int ora_ncs_buff_mtpl;
-extern ub2 charsetid;
-extern ub2 ncharsetid;
 extern ub2 us7ascii_csid;
 extern ub2 utf8_csid;
 extern ub2 al32utf8_csid;
@@ -330,11 +316,11 @@ extern ub2 al16utf16_csid;
  #define CS_IS_UTF16( cs ) ( cs == al16utf16_csid )
 
 
-#define CSFORM_IMPLIED_CSID(csform) \
-	((csform==SQLCS_NCHAR) ? ncharsetid : charsetid)
+#define CSFORM_IMPLIED_CSID(imp_xxh, csform) \
+	((csform==SQLCS_NCHAR) ? (imp_xxh)->ncset : (imp_xxh)->cset)
 
-#define CSFORM_IMPLIES_UTF8(csform) \
-	CS_IS_UTF8( CSFORM_IMPLIED_CSID( csform ) )
+#define CSFORM_IMPLIES_UTF8(imp_xxh, csform) \
+	CS_IS_UTF8( CSFORM_IMPLIED_CSID(imp_xxh, csform ) )
 
 
 void dbd_init_oci _((dbistate_t *dbistate));
@@ -388,14 +374,13 @@ void ora_free_lob_refetch _((SV *sth, imp_sth_t *imp_sth));
 void dbd_phs_avsv_complete _((imp_sth_t *imp_sth, phs_t *phs, I32 index, I32 debug));
 void dbd_phs_sv_complete _((imp_sth_t *imp_sth, phs_t *phs, SV *sv, I32 debug));
 int post_execute_lobs _((SV *sth, imp_sth_t *imp_sth, ub4 row_count));
-ub4 ora_parse_uid _((imp_dbh_t *imp_dbh, char **uidp, char **pwdp));
 char *ora_sql_error _((imp_sth_t *imp_sth, char *msg));
 char *ora_env_var(char *name, char *buf, unsigned long size);
 
-#ifdef __CYGWIN32__
+#if defined(__CYGWIN__) || defined(__CYGWIN32__)
 void ora_cygwin_set_env(char *name, char *value);
 
-#endif /* __CYGWIN32__ */
+#endif /* __CYGWIN__ */
 
 sb4 dbd_phs_in _((dvoid *octxp, OCIBind *bindp, ub4 iter, ub4 index,
 			  dvoid **bufpp, ub4 *alenp, ub1 *piecep, dvoid **indpp));
@@ -413,6 +398,35 @@ void rs_array_init(imp_sth_t *imp_sth);
 
 ub4 ora_db_version _((SV *dbh, imp_dbh_t *imp_dbh));
 sb4 reg_taf_callback _((SV *dbh, imp_dbh_t *imp_dbh));
+
+int cnx_establish (pTHX_ dblogin_info_t * );
+void cnx_drop_dr(pTHX_ imp_drh_t *);
+void cnx_clean(pTHX_ imp_dbh_t * );
+void cnx_detach(pTHX_ imp_dbh_t * );
+void ora_shared_release(pTHX_ SV * );
+
+#ifdef ORA_OCI_112
+int cnx_get_pool_mode(pTHX_ SV *, imp_dbh_t * );
+void cnx_pool_mode(pTHX_ SV * , imp_dbh_t * , ub4);
+
+int cnx_get_pool_wait(pTHX_ SV *, imp_dbh_t * );
+void cnx_pool_wait(pTHX_ SV * , imp_dbh_t * , ub4);
+
+int cnx_get_pool_used(pTHX_ SV *, imp_dbh_t * );
+
+int cnx_get_pool_rlb(pTHX_ SV *, imp_dbh_t * );
+
+int cnx_get_pool_incr(pTHX_ SV *, imp_dbh_t * );
+void cnx_pool_incr(pTHX_ SV * , imp_dbh_t * , ub4);
+
+int cnx_get_pool_min(pTHX_ SV *, imp_dbh_t * );
+void cnx_pool_min(pTHX_ SV * , imp_dbh_t * , ub4);
+
+int cnx_get_pool_max(pTHX_ SV *, imp_dbh_t * );
+void cnx_pool_max(pTHX_ SV * , imp_dbh_t * , ub4);
+
+int cnx_is_pooled_session(pTHX_ SV *, imp_dbh_t *);
+#endif
 
 /* These defines avoid name clashes for multiple statically linked DBD's	*/
 

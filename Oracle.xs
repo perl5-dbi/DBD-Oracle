@@ -72,6 +72,10 @@ constant(name=Nullch)
 	OCI_DBSHUTDOWN_IMMEDIATE = 3
 	OCI_DBSHUTDOWN_ABORT 	= 4
 	OCI_DBSHUTDOWN_FINAL 	= 5
+    OCI_SPOOL_ATTRVAL_WAIT  = OCI_SPOOL_ATTRVAL_WAIT
+    OCI_SPOOL_ATTRVAL_TIMEDWAIT = OCI_SPOOL_ATTRVAL_TIMEDWAIT
+    OCI_SPOOL_ATTRVAL_NOWAIT = OCI_SPOOL_ATTRVAL_NOWAIT
+    OCI_SPOOL_ATTRVAL_FORCEGET = OCI_SPOOL_ATTRVAL_FORCEGET
 	SQLT_CHR	= SQLT_CHR
 	SQLT_BIN	= SQLT_BIN
 	CODE:
@@ -104,7 +108,7 @@ ora_env_var(name)
 		sv_setpv(sv, p);
 	ST(0) = sv;
 
-#if defined(__CYGWIN32__) || defined(__CYGWIN64__)
+#if defined(__CYGWIN32__) || defined(__CYGWIN64__) || defined(__CYGWIN__)
 void
 ora_cygwin_set_env(name, value)
 	char * name
@@ -113,6 +117,12 @@ ora_cygwin_set_env(name, value)
 	ora_cygwin_set_env(name, value);
 
 #endif /* __CYGWIN32__ */
+
+void
+ora_shared_release(sv)
+	SV * sv
+	CODE:
+	ora_shared_release(aTHX_ sv);
 
 INCLUDE: Oracle.xsi
 
@@ -433,12 +443,29 @@ ora_ping(dbh)
 
 
 void
-reauthenticate(dbh, uid, pwd)
+reauthenticate(dbh, usv, psv)
 	SV *	dbh
-	char *	uid
-	char *	pwd
+	SV *	usv
+	SV *	psv
 	CODE:
+    STRLEN ulen, plen;
+    char * uid, * pwd;
 	D_imp_dbh(dbh);
+
+    uid = (char*)SvPV(usv, ulen);
+    pwd = (char*)SvPV(psv, plen);
+    if(plen == 0 && ulen != 0)
+    {
+        char * b = strchr(uid, '/');
+        if(b != NULL && b != uid)
+        {
+            size_t off = b - uid;
+            SV * tmp = sv_mortalcopy(usv);
+            uid = (char *)SvPV(tmp, ulen);
+            uid[off] = 0;
+            pwd = uid + off + 1;
+        }
+    }
 	ST(0) = ora_db_reauthenticate(dbh, imp_dbh, uid, pwd) ? &PL_sv_yes : &PL_sv_no;
 
 void
@@ -485,7 +512,7 @@ ora_lob_write(dbh, locator, offset, data)
 	}
 #endif /* OCI_ATTR_CHARSET_ID */
 	/* if data is utf8 but charset isn't then switch to utf8 csid */
-	csid = (SvUTF8(data) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(csform);
+	csid = (SvUTF8(data) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(imp_dbh, csform);
 
 	OCILobWrite_log_stat(imp_dbh, imp_dbh->svchp, imp_dbh->errhp, locator,
 		&amtp, (ub4)offset,
@@ -546,7 +573,7 @@ ora_lob_append(dbh, locator, data)
 	}
 #endif /* OCI_ATTR_CHARSET_ID */
 	/* if data is utf8 but charset isn't then switch to utf8 csid */
-	csid = (SvUTF8(data) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(csform);
+	csid = (SvUTF8(data) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(imp_dbh, csform);
 	OCILobWriteAppend_log_stat(imp_dbh, imp_dbh->svchp, imp_dbh->errhp, locator,
 				   &amtp, bufp, (ub4)data_len, OCI_ONE_PIECE,
 				   NULL, NULL,
@@ -625,7 +652,7 @@ ora_lob_read(dbh, locator, offset, length)
             SvCUR(dest_sv) = amtp; /* always bytes here */
             *SvEND(dest_sv) = '\0';
             if (csform){
-                if (CSFORM_IMPLIES_UTF8(csform)){
+                if (CSFORM_IMPLIES_UTF8(imp_dbh, csform)){
                     SvUTF8_on(dest_sv);
                 }
             }
@@ -715,12 +742,18 @@ ora_lob_chunk_size(dbh, locator)
 MODULE = DBD::Oracle	PACKAGE = DBD::Oracle::dr
 
 void
+init_globals()
+    CODE:
+    dbd_dr_globals_init();
+
+void
 init_oci(drh)
 	SV *	drh
 	CODE:
 	D_imp_drh(drh);
 	dbd_init_oci(DBIS) ;
 	dbd_init_oci_drh(imp_drh) ;
+    dbd_dr_mng();
 
 void
 DESTROY(drh)

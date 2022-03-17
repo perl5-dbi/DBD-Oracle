@@ -13,10 +13,10 @@
 #define strcasecmp strcmpi
 #endif
 
-#ifdef __CYGWIN32__
-#include "w32api/windows.h"
-#include "w32api/winbase.h"
-#endif /* __CYGWIN32__ */
+#if defined(__CYGWIN__) || defined(__CYGWIN32__)
+#include <w32api/windows.h>
+#include <w32api/winbase.h>
+#endif /* __CYGWIN__ */
 
 #include "Oracle.h"
 
@@ -32,7 +32,6 @@
 DBISTATE_DECLARE;
 
 int ora_fetchtest;         /* internal test only, not thread safe */
-int is_extproc	  	  = 0; /* not ProC but ExtProc.pm */
 int dbd_verbose		  = 0; /* DBD only debugging*/
 int oci_warn		  = 0; /* show oci warnings */
 int ora_objects		  = 0; /* get oracle embedded objects as instance of DBD::Oracle::Object */
@@ -44,13 +43,14 @@ int ora_ncs_buff_mtpl = 4; /* a mulitplyer for ncs clob buffers */
 #define ARRAY_BIND_MIXED  (ARRAY_BIND_NATIVE|ARRAY_BIND_UTF8)
 
 
-ub2 charsetid		= 0;
-ub2 ncharsetid		= 0;
 ub2 us7ascii_csid	= 1;
 ub2 utf8_csid		= 871;
 ub2 al32utf8_csid	= 873;
 ub2 al16utf16_csid	= 2000;
 
+/* reduce noise in the login6 function */
+#define tracer(dlvl, vlvl, ...) if (DBIc_DBISTATE(imp_dbh)->debug >= (dlvl) || dbd_verbose >= (vlvl) )\
+            PerlIO_printf(DBIc_LOGPIO(imp_dbh), __VA_ARGS__)
 
 typedef struct sql_fbh_st sql_fbh_t;
 struct sql_fbh_st {
@@ -58,9 +58,18 @@ struct sql_fbh_st {
 	int prec;
 	int scale;
 };
+typedef struct login_info_st login_info_t;
+struct login_info_st {
+    SV * dbh;
+    imp_dbh_t * imp_dbh;
+    char *dbname;
+    char *uid;
+    char *pwd;
+    ub4 mode;
+};
 static sql_fbh_t ora2sql_type _((imp_fbh_t* fbh));
 static void disable_taf(imp_dbh_t *imp_dbh);
-static int enable_taf(SV *dbh, imp_dbh_t *imp_dbh);
+static int enable_taf(pTHX_ SV *dbh, imp_dbh_t *imp_dbh);
 
 void ora_free_phs_contents _((imp_sth_t *imp_sth, phs_t *phs));
 static void dump_env_to_trace(imp_dbh_t *imp_dbh);
@@ -116,6 +125,28 @@ oci_error_get(imp_xxh_t *imp_xxh,
 	return errcode;
 }
 
+
+/* report to DBI errors that are not comming from Oracle */
+static int
+local_error(pTHX_ SV * h, const char * fmt, ...)
+{
+    va_list ap;
+    SV * txt_sv = sv_newmortal();
+    SV * code_sv = get_sv("DBI::stderr", 0);
+    D_imp_xxh(h);
+    if(code_sv == NULL)
+    {
+        code_sv  = sv_newmortal();
+        sv_setiv(code_sv, 2000000000);
+    }
+    va_start(ap, fmt);
+    sv_vsetpvf(txt_sv, fmt, &ap);
+    va_end(ap);
+    DBIh_SET_ERR_SV(h, imp_xxh, code_sv, txt_sv, &PL_sv_undef, &PL_sv_undef);
+    return FALSE;
+}
+
+
 static int
 GetRegKey(char *key, char *val, char *data, unsigned long *size)
 {
@@ -127,7 +158,7 @@ GetRegKey(char *key, char *val, char *data, unsigned long *size)
 	ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &hKey);
 	if (ret != ERROR_SUCCESS)
 		return 0;
-	ret = RegQueryValueEx(hKey, val, NULL, NULL, data, size);
+	ret = RegQueryValueEx(hKey, val, NULL, NULL, (LPBYTE)data, size);
 	RegCloseKey(hKey);
 	if ((ret != ERROR_SUCCESS) || (*size >= len))
 		return 0;
@@ -164,7 +195,7 @@ ora_env_var(char *name, char *buf, unsigned long size)
 	return buf;
 }
 
-#ifdef __CYGWIN32__
+#if defined(__CYGWIN__) || defined(__CYGWIN32__)
 /* Under Cygwin there are issues with setting environment variables
  * at runtime such that Windows-native libraries loaded by a Cygwin
  * process can see those changes.
@@ -190,8 +221,24 @@ ora_cygwin_set_env(char *name, char *value)
 {
 	SetEnvironmentVariable(name, value);
 }
-#endif /* __CYGWIN32__ */
+#endif /* __CYGWIN__ */
 
+
+void
+ora_shared_release(pTHX_ SV * sv)
+{
+    STRLEN len;
+    imp_dbh_t *imp_dbh;
+    while (SvROK(sv)) sv = SvRV(sv) ;
+    imp_dbh = (imp_dbh_t *)SvPV(sv, len);
+    if(len == sizeof(*imp_dbh))
+    {
+        if(dbd_verbose >= 3)
+            warn("clearing shared session %p\n", imp_dbh->seshp);
+        cnx_detach(aTHX_ imp_dbh);
+        cnx_clean(aTHX_ imp_dbh);
+    }
+}
 
 void
 dbd_init(dbistate_t *dbistate)
@@ -201,44 +248,13 @@ dbd_init(dbistate_t *dbistate)
 	dbd_init_oci(dbistate);
 }
 
-
 void
 dbd_dr_destroy(SV *drh, imp_drh_t *imp_drh)
 {
 	dTHX;
-	sword status;
-
-	/* We rely on the DBI dispatcher to destroy all child handles before we get here (DBI >= 1.623). */
-
-	if (imp_drh->leak_handles) {
-		/* By using ithread, handles will leak in dbd_dr_destroy() */
-		return;
-	}
-
-#ifdef ORA_OCI_112
-	/* Free session pool resources. */
-	if (imp_drh->pool_hv) {
-		HE *pool_he;
-		hv_iterinit(imp_drh->pool_hv);
-		while ((pool_he = hv_iternext(imp_drh->pool_hv))) {
-			session_pool_t *pool = (session_pool_t*)SvPVX(HeVAL(pool_he));
-			/* Only destroy the session pool if there are no active sessions left.
-			   If there are active sessions left, this is because "InactiveDestroy"
-			   is set on one or more db handles. */
-			if (!pool->active_sessions) {
-				OCISessionPoolDestroy_log_stat(imp_drh, pool->poolhp, pool->errhp, status);
-			}
-			OCIHandleFree_log_stat(imp_drh, pool->poolhp, OCI_HTYPE_SPOOL, status);
-			OCIHandleFree_log_stat(imp_drh, pool->errhp, OCI_HTYPE_ERROR, status);
-			OCIHandleFree_log_stat(imp_drh, pool->envhp, OCI_HTYPE_ENV, status);
-		}
-		hv_undef(imp_drh->pool_hv);
-	}
-
-	if (imp_drh->charset_hv) {
-		hv_undef(imp_drh->charset_hv);
-	}
-#endif
+        if (dbd_verbose >= 3 )
+            PerlIO_printf(DBIc_LOGPIO(imp_drh), "dr_destroy %p\n", imp_drh);
+        cnx_drop_dr(aTHX_ imp_drh);
 }
 
 
@@ -402,24 +418,6 @@ fb_ary_free(fb_ary_t *fb_ary)
 
 }
 
-#ifdef ORA_OCI_112
-/* Helper functions to fetch cached session pool. */
-static SV *
-pool_key(imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, int csid, int ncsid)
-{
-	return newSVpvf("%s/%s@%s class=%.*s,csid=%d,ncsid=%d", uid, pwd, dbname, imp_dbh->pool_classl, imp_dbh->pool_class, csid, ncsid);
-}
-
-static session_pool_t *
-pool_fetch(imp_drh_t *imp_drh, SV *key)
-{
-	dTHX;
-	HE *pool_he = hv_fetch_ent(imp_drh->pool_hv, key, 0, 0);
-	return pool_he ? (session_pool_t *)SvPVX(HeVAL(pool_he)) : NULL;
-}
-#endif
-
-
 /* ================================================================== */
 
 
@@ -430,14 +428,58 @@ dbd_db_login(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd)
 }
 
 
-/* from shared.xs */
-typedef struct {
-	SV	*sv; /* The actual SV - in shared space */
-	/* we don't need the following two */
-	/*recursive_lock_t	lock; */
-	/*perl_cond		   user_cond;*/	  /* For user-level conditions */
-} shared_sv;
+static sword
+get_env_charset(OCIEnv *envhp, OCIError * errhp, ub2 * charset_p, ub2 * ncharset_p)
+{
+    sword status = OCIAttrGet(envhp, OCI_HTYPE_ENV,
+            charset_p, NULL,
+            OCI_ATTR_ENV_CHARSET_ID,errhp
+    );
+    if (status != OCI_SUCCESS) return status;
+    return OCIAttrGet(envhp, OCI_HTYPE_ENV,
+            ncharset_p, NULL,
+            OCI_ATTR_ENV_NCHARSET_ID,errhp
+    );
+}
 
+/* this function makes final adjustments to connected handle */
+static int
+activate_dbh(pTHX_ dblogin_info_t * ctrl)
+{
+    imp_dbh_t * imp_dbh = ctrl->imp_dbh;
+    DBIc_IMPSET_on(imp_dbh);    /* just in case */
+    DBIc_ACTIVE_on(imp_dbh);	/* call disconnect before freeing	*/
+    imp_dbh->ph_type = 1;	/* SQLT_CHR "(ORANET TYPE) character string" */
+    imp_dbh->ph_csform = 0;	/* meaning auto (see dbd_rebind_ph)	*/
+
+    if (DBIc_DBISTATE(imp_dbh)->debug >= 3 || dbd_verbose >= 3 ) {
+	sword status;
+        oratext  charsetname[OCI_NLS_MAXBUFSZ];
+        oratext  ncharsetname[OCI_NLS_MAXBUFSZ];
+        ub2 charsetid_l		= 0;
+        ub2 ncharsetid_l	= 0;
+
+        /* Report charsets used in the environment */
+        status = get_env_charset(imp_dbh->envhp, imp_dbh->errhp, &charsetid_l, &ncharsetid_l);
+	if (status != OCI_SUCCESS) {
+		oci_error(ctrl->dbh, imp_dbh->errhp, status,
+                        "OCIAttrGet OCI_ATTR_ENV_CHARSET_ID");
+		return 0;
+	}
+        OCINlsCharSetIdToName(imp_dbh->envhp,charsetname, sizeof(charsetname),charsetid_l );
+        OCINlsCharSetIdToName(imp_dbh->envhp,ncharsetname, sizeof(ncharsetname),ncharsetid_l );
+        PerlIO_printf( DBIc_LOGPIO(imp_dbh),
+        "	   charset id=%d, name=%s, ncharset id=%d, name=%s, session=%p"
+        " (csid: utf8=%d al32utf8=%d)\n",
+        charsetid_l,charsetname, ncharsetid_l,ncharsetname, imp_dbh->seshp,
+        utf8_csid, al32utf8_csid);
+#ifdef ORA_OCI_112
+        if (ctrl->pool_max)
+            PerlIO_printf(DBIc_LOGPIO(imp_dbh)," Using DRCP Connection\n ");
+#endif
+    }
+    return TRUE;
+}
 
 
 int
@@ -445,610 +487,213 @@ dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, S
 {
 	dTHR;
 	dTHX;
-	sword status;
+        dblogin_info_t ctrl = {0};
 	SV **svp;
-	shared_sv * shared_dbh_ssv = NULL ;
-	imp_dbh_t * shared_dbh	 = NULL ;
-	D_imp_drh_from_dbh;
-	ub2 new_charsetid = 0;
-	ub2 new_ncharsetid = 0;
 #if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
-	SV **	shared_dbh_priv_svp ;
-	SV *	shared_dbh_priv_sv ;
 	STRLEN	shared_dbh_len  = 0 ;
+        SV * shared_sv = NULL;
 #endif
-
-#ifdef ORA_OCI_112
-	session_pool_t *pool = NULL;
-
-	/*check to see if the user is connecting with DRCP */
-	if (DBD_ATTRIB_TRUE(attr,"ora_drcp",8,svp))
-		imp_dbh->using_drcp = 1;
-
-	/* some connection pool attributes  */
-
-	if ((svp=DBD_ATTRIB_GET_SVP(attr, "ora_drcp_class", 14)) && SvOK(*svp)) {
-		STRLEN  svp_len;
-		if (!SvPOK(*svp))
-			croak("ora_drcp_class is not a string");
-		imp_dbh->pool_class = (text *) SvPV (*svp, svp_len );
-		imp_dbh->pool_classl= (ub4) svp_len;
-    }
-    if (DBD_ATTRIB_TRUE(attr,"ora_drcp_min",12,svp))
-		DBD_ATTRIB_GET_IV( attr, "ora_drcp_min",  12, svp, imp_dbh->pool_min);
-	if (DBD_ATTRIB_TRUE(attr,"ora_drcp_max",12,svp))
-		DBD_ATTRIB_GET_IV( attr, "ora_drcp_max",  12, svp, imp_dbh->pool_max);
-	if (DBD_ATTRIB_TRUE(attr,"ora_drcp_incr",13,svp))
-		DBD_ATTRIB_GET_IV( attr, "ora_drcp_incr",  13, svp, imp_dbh->pool_incr);
-	if (DBD_ATTRIB_TRUE(attr,"ora_drcp_rlb",12,svp))
-		DBD_ATTRIB_GET_IV( attr, "ora_drcp_rlb",  12, svp, imp_dbh->pool_rlb);
-
-	imp_dbh->driver_name = "DBD::Oracle : " VERSION;
-#endif
-
-    /* TAF Events */
-    if ((svp=DBD_ATTRIB_GET_SVP(attr, "ora_taf_function",  16)) && SvOK(*svp)) {
-        if ((SvROK(*svp) && (SvTYPE(SvRV(*svp)) == SVt_PVCV)) ||
-            (SvPOK(*svp))) {
-            imp_dbh->taf_function = newSVsv(*svp);
-        } else {
-            croak("ora_taf_function needs to be a string or code reference");
-        }
-        /* avoid later STORE: */
-        /* See DBI::DBB problem with ATTRIB_DELETE until DBI 1.607 */
-        /* DBD_ATTRIB_DELETE(attr, "ora_taf_function", 16); */
-        (void)hv_delete((HV*)SvRV(attr), "ora_taf_function", 16, G_DISCARD);
-	}
-
-    imp_dbh->server_version = 0;
 
 	/* check to see if DBD_verbose or ora_verbose is set*/
-	if (DBD_ATTRIB_TRUE(attr,"dbd_verbose",11,svp))
-		DBD_ATTRIB_GET_IV(  attr, "dbd_verbose",  11, svp, dbd_verbose);
-	if (DBD_ATTRIB_TRUE(attr,"ora_verbose",11,svp))
-		DBD_ATTRIB_GET_IV(  attr, "ora_verbose",  11, svp, dbd_verbose);
+        DBD_ATTRIB_GET_IV(  attr, "dbd_verbose",  11, svp, dbd_verbose);
+        DBD_ATTRIB_GET_IV(  attr, "ora_verbose",  11, svp, dbd_verbose);
 
 	if (DBIc_DBISTATE(imp_dbh)->debug >= 6 || dbd_verbose >= 6 )
 		dump_env_to_trace(imp_dbh);
 
 	/* dbi_imp_data code adapted from DBD::mysql */
-	if (DBIc_has(imp_dbh, DBIcf_IMPSET)) {
-		/* dbi_imp_data from take_imp_data */
-		if (DBIc_has(imp_dbh, DBIcf_ACTIVE)) {
-			if (DBIc_DBISTATE(imp_dbh)->debug >= 2 || dbd_verbose >= 3 )
-				PerlIO_printf(DBIc_LOGPIO(imp_dbh), "dbd_db_login6 skip connect\n");
-			/* tell our parent we've adopted an active child */
-			++DBIc_ACTIVE_KIDS(DBIc_PARENT_COM(imp_dbh));
-
-			return 1;
-		}
-		/* not ACTIVE so connect not skipped */
-		if (DBIc_DBISTATE(imp_dbh)->debug >= 2 || dbd_verbose >= 3 )
-			PerlIO_printf(DBIc_LOGPIO(imp_dbh),
-				"dbd_db_login6 IMPSET but not ACTIVE so connect not skipped\n");
+	if (DBIc_has(imp_dbh, DBIcf_IMPSET))
+        {
+            /* dbi_imp_data from take_imp_data */
+            if (DBIc_has(imp_dbh, DBIcf_ACTIVE))
+            {
+                tracer(2, 3, "dbd_db_login6 impset. Env is %p\n", imp_dbh->envhp);
+                /* tell our parent we've adopted an active child */
+                ++DBIc_ACTIVE_KIDS(DBIc_PARENT_COM(imp_dbh));
+                return TRUE;
+            }
+            /* not ACTIVE so connect not skipped */
+            tracer(2, 3, "dbd_db_login6 IMPSET but not ACTIVE\n");
 	}
 
-	imp_dbh->envhp = imp_drh->envhp;	/* will be NULL on first connect */
+        ctrl.mode = OCI_OBJECT;/* needed for LOBs (8.0.4)	*/
+        if (DBD_ATTRIB_TRUE(attr, "ora_events", 10, svp))
+        {
+            ctrl.mode |= OCI_EVENTS;
+            /* Needed for Oracle Fast Application Notification (FAN). */
+        }
 
-#if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
-	shared_dbh_priv_svp = (DBD_ATTRIB_OK(attr)?hv_fetch((HV*)SvRV(attr), "ora_dbh_share", 13, 0):NULL) ;
-	shared_dbh_priv_sv = shared_dbh_priv_svp?*shared_dbh_priv_svp:NULL ;
-
-	if (shared_dbh_priv_sv && SvROK(shared_dbh_priv_sv))
-		shared_dbh_priv_sv = SvRV(shared_dbh_priv_sv) ;
-
-	if (shared_dbh_priv_sv) {
-		MAGIC * mg ;
-
-		SvLOCK (shared_dbh_priv_sv) ;
-
-		/* some magic from shared.xs (no public api yet :-( */
-		mg = mg_find(shared_dbh_priv_sv, PERL_MAGIC_shared_scalar) ;
-
-		shared_dbh_ssv = (shared_sv * )(mg?mg -> mg_ptr:NULL) ;  /*sharedsv_find(*shared_dbh_priv_sv) ;*/
-
-		if (!shared_dbh_ssv)
-			croak ("value of ora_dbh_share must be a scalar that is shared") ;
-
-		shared_dbh 		= (imp_dbh_t *)SvPVX(shared_dbh_ssv -> sv) ;
-		shared_dbh_len 	= SvCUR((shared_dbh_ssv -> sv)) ;
-
-		if (shared_dbh_len > 0 && shared_dbh_len != sizeof (imp_dbh_t))
-			croak ("Invalid value for ora_dbh_share") ;
-
-		if (shared_dbh_len == sizeof (imp_dbh_t)) {
-		/* initialize from shared data */
-			memcpy (((char *)imp_dbh) + DBH_DUP_OFF, ((char *)shared_dbh) + DBH_DUP_OFF, DBH_DUP_LEN) ;
-			shared_dbh -> refcnt++ ;
-			imp_dbh -> shared_dbh_priv_sv = shared_dbh_priv_sv ;
-			imp_dbh -> shared_dbh		 = shared_dbh ;
-			if (DBIc_DBISTATE(imp_dbh)->debug >= 2 || dbd_verbose >= 3 )
-				PerlIO_printf(DBIc_LOGPIO(imp_dbh), "	dbd_db_login: use shared Oracle database handles.\n");
-		} else {
-			shared_dbh = NULL ;
-		}
-
-		/* By using ithread, handles will leak in dbd_dr_destroy() */
-		imp_drh->leak_handles = 1;
-	}
-#endif
-
-	imp_dbh->get_oci_handle = oci_db_handle;
-
-#ifdef ORA_OCI_112
-	if (!imp_dbh->using_drcp) {
-#endif
-		if ((svp=DBD_ATTRIB_GET_SVP(attr, "ora_envhp", 9)) && SvOK(*svp)) {
-			if (!SvTRUE(*svp)) {
-				imp_dbh->envhp = NULL; /* force new environment */
-			}
-		}
-		/* Test if a cached environment handle it still usable (see RT46739) */
-		if (imp_dbh->envhp) {
-			OCIHandleAlloc_ok(imp_dbh, imp_dbh->envhp, &imp_dbh->errhp, OCI_HTYPE_ERROR, status);
-			if (status != OCI_SUCCESS) {
-				imp_dbh->envhp = NULL;
-			}
-		}
-#ifdef ORA_OCI_112
-	}
-	else if (!shared_dbh) {
-		/* Try to find session pool in cache. */
-		imp_dbh->envhp = NULL;
-
-		if (!imp_drh->charset_hv) {
-			imp_drh->charset_hv = newHV();
-		}
-		if (!imp_drh->pool_hv) {
-			imp_drh->pool_hv = newHV();
-		}
-
-		/* Get charset and ncharset IDs. */
-		if ((svp = DBD_ATTRIB_GET_SVP(attr, "ora_charset", 11))) {
-			/* Charset name from parameter; try looking up previously used ID. */
-			HE *charset_he = hv_fetch_ent(imp_drh->charset_hv, *svp, 0, 0);
-			charsetid = charset_he ? SvIV(HeVAL(charset_he)) : 0;
-		}
-		else {
-			/* Get charset ID from the NLS environment. */
-			size_t rsize;
-			OCINlsEnvironmentVariableGet_log_stat(imp_dbh, &charsetid, 0, OCI_NLS_CHARSET_ID, 0, &rsize, status);
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, NULL, status,
-					"OCINlsEnvironmentVariableGet(OCI_NLS_CHARSET_ID) Check NLS settings etc.");
-				return 0;
-			}
-		}
-		if ((svp = DBD_ATTRIB_GET_SVP(attr, "ora_ncharset", 12))) {
-			/* Charset name from parameter; try looking up previously used ID. */
-			HE *charset_he = hv_fetch_ent(imp_drh->charset_hv, *svp, 0, 0);
-			ncharsetid = charset_he ? SvIV(HeVAL(charset_he)) : 0;
-		}
-		else {
-			/* Get charset ID from the NLS environment. */
-			size_t rsize;
-			OCINlsEnvironmentVariableGet_log_stat(imp_dbh, &ncharsetid, 0, OCI_NLS_NCHARSET_ID, 0, &rsize, status);
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, NULL, status,
-					"OCINlsEnvironmentVariableGet(OCI_NLS_NCHARSET_ID) Check NLS settings etc.");
-					return 0;
-			}
-		}
-
-		if (charsetid && ncharsetid) {
-			/* Look up session pool initialized with the same dbname, uid/pwd, connection class, and charsets. */
-			SV *key_sv = pool_key(imp_dbh, dbname, uid, pwd, charsetid, ncharsetid);
-
-			if ((pool = pool_fetch(imp_drh, key_sv))) {
-				imp_dbh->pool = pool;
-				imp_dbh->envhp = pool->envhp;
-			}
-
-			sv_free(key_sv);
-		}
-	}
-#endif
-
-    if (!imp_dbh->envhp ) {
-		SV **init_mode_sv;
-		ub4 init_mode = OCI_OBJECT;/* needed for LOBs (8.0.4)	*/
-
-		if (DBD_ATTRIB_TRUE(attr, "ora_events", 10, svp))
-			init_mode |= OCI_EVENTS; /* Needed for Oracle Fast Application Notification (FAN). */
-
-		DBD_ATTRIB_GET_IV(attr, "ora_init_mode",13, init_mode_sv, init_mode);
+        /* Undocumented, this overrides all previous settings */
+        DBD_ATTRIB_GET_IV(attr, "ora_init_mode",13, svp, ctrl.mode);
 
 #if defined(USE_ITHREADS) || defined(MULTIPLICITY) || defined(USE_5005THREADS)
-        init_mode |= OCI_THREADED;
+        ctrl.mode |= OCI_THREADED;
 #endif
-
-		{
-			size_t rsize = 0;
-			/* Get CLIENT char and nchar charset id values */
-			OCINlsEnvironmentVariableGet_log_stat(imp_dbh, &charsetid,(size_t) 0, OCI_NLS_CHARSET_ID, 0, &rsize ,status );
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, NULL, status,
-					"OCINlsEnvironmentVariableGet(OCI_NLS_CHARSET_ID) Check NLS settings etc.");
-				return 0;
-			}
-
-			OCINlsEnvironmentVariableGet_log_stat(imp_dbh, &ncharsetid,(size_t)  0, OCI_NLS_NCHARSET_ID, 0, &rsize ,status );
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, NULL, status,
-					"OCINlsEnvironmentVariableGet(OCI_NLS_NCHARSET_ID) Check NLS settings etc.");
-				return 0;
-			}
-
-			/*{
-			After using OCIEnvNlsCreate() to create the environment handle,
-			**the actual lengths and returned lengths of bind and define handles are
-			always in number of bytes**. This applies to the following calls:
-
-			* OCIBindByName()   * OCIBindByPos()	  * OCIBindDynamic()
-			* OCIDefineByPos()  * OCIDefineDynamic()
-
-			This function enables you to set charset and ncharset ids at
-			environment creation time. [...]
-
-			This function sets nonzero charset and ncharset as client side
-			database and national character sets, replacing the ones specified
-			by NLS_LANG and NLS_NCHAR. When charset and ncharset are 0, it
-			behaves exactly the same as OCIEnvCreate(). Specifically, charset
-			controls the encoding for metadata and data with implicit form
-			attribute and ncharset controls the encoding for data with SQLCS_NCHAR
-			form attribute.
-			}*/
-
-			OCIEnvNlsCreate_log_stat(imp_dbh, &imp_dbh->envhp, init_mode, 0, NULL, NULL, NULL, 0, NULL,
-				charsetid, ncharsetid, status );
-
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, NULL, status,
-					"OCIEnvNlsCreate. Check ORACLE_HOME (Linux) env var or PATH (Windows) and or NLS settings, permissions, etc.");
-				return 0;
-			}
-
-			svp = DBD_ATTRIB_GET_SVP(attr, "ora_charset", 11);/*get the charset passed in by the user*/
-			if (svp) {
-				if (!SvPOK(*svp)) {
-					croak("ora_charset is not a string");
-				}
-
-				new_charsetid = OCINlsCharSetNameToId(imp_dbh->envhp, (oratext*)SvPV_nolen(*svp));
-
-				if (!new_charsetid) {
-					croak("ora_charset value (%s) is not valid", SvPV_nolen(*svp));
-				}
+        ctrl.dbname = dbname;
+        ctrl.dbh = dbh;
+        ctrl.imp_dbh = imp_dbh;
+        ctrl.uid = uid;
+        ctrl.pwd = pwd;
 
 #ifdef ORA_OCI_112
-				if (imp_dbh->using_drcp) {
-					/* Store lookup from charset name to charset ID. */
-					(void)hv_store_ent(imp_drh->charset_hv, *svp, newSViv(new_charsetid), 0);
-				}
+	/*check to see if the user is connecting with DRCP */
+	if (DBD_ATTRIB_TRUE(attr,"ora_drcp",8,svp))
+        {
+            ctrl.pool_max = 40;
+            hv_delete((HV*)SvRV(attr), "ora_drcp", 8, G_DISCARD);
+        }
+
+	/* some connection pool attributes  */
+        if(ctrl.pool_max)
+        {
+            svp = DBD_ATTRIB_GET_SVP(attr, "ora_drcp_min",12);
+            if (svp != NULL)
+            {
+                ctrl.pool_min = SvIV(*svp);
+                hv_delete((HV*)SvRV(attr), "ora_drcp_min", 12, G_DISCARD);
+            }
+            svp = DBD_ATTRIB_GET_SVP(attr,"ora_drcp_max",12);
+            if (svp != NULL)
+            {
+                ctrl.pool_max = SvIV(*svp);
+                if (ctrl.pool_max == 0) ctrl.pool_max = 40;
+                hv_delete((HV*)SvRV(attr), "ora_drcp_max", 12, G_DISCARD);
+            }
+            svp = DBD_ATTRIB_GET_SVP(attr,"ora_drcp_incr",13);
+            if (svp != NULL)
+            {
+                ctrl.pool_incr = SvIV(*svp);
+                hv_delete((HV*)SvRV(attr), "ora_drcp_incr", 13, G_DISCARD);
+            }
+            svp = DBD_ATTRIB_GET_SVP(attr,"ora_drcp_rlb",12);
+            if (svp != NULL)
+            {
+                ctrl.pool_rlb = (0 != SvIV(*svp)) ? 1 : 0;
+                hv_delete((HV*)SvRV(attr), "ora_drcp_rlb", 12, G_DISCARD);
+            }
+            svp = DBD_ATTRIB_GET_SVP(attr,"ora_drcp_class",14);
+            if (svp != NULL)
+                ctrl.pool_class = hv_delete((HV*)SvRV(attr), "ora_drcp_class", 14, 0);
+            /* save session tag to be used during session-get
+             * it won't be passed to STORE. The found tag shall
+             * be stored in imp_dbh->session_tag
+             */
+            svp = DBD_ATTRIB_GET_SVP(attr,"ora_drcp_tag",12);
+            if (svp != NULL)
+                ctrl.pool_tag = hv_delete((HV*)SvRV(attr), "ora_drcp_tag", 12, 0);
+            /* pool Default values */
+            if (!ctrl.pool_incr) ctrl.pool_incr = 1;
+        }
+        svp = DBD_ATTRIB_GET_SVP(attr,"ora_driver_name",15);
+	if (svp != NULL)
+        {
+            STRLEN l;
+            SV * v = hv_delete((HV*)SvRV(attr), "ora_driver_name", 15, 0);
+            ctrl.driver_name = SvPV(v, l);
+            ctrl.driver_name_len = (ub4)l;
+        }
+        else
+        {
+            ctrl.driver_name = "DBD::Oracle : " VERSION;
+            ctrl.driver_name_len = strlen(ctrl.driver_name);
+        }
 #endif
-			}
+    /* TAF Events shall be processed from STORE*/
 
-			svp = DBD_ATTRIB_GET_SVP(attr, "ora_ncharset", 12); /*get the ncharset passed in by the user*/
-
-			if (svp) {
-				if (!SvPOK(*svp)) {
-					croak("ora_ncharset is not a string");
-				}
-
-				new_ncharsetid = OCINlsCharSetNameToId(imp_dbh->envhp, (oratext*)SvPV_nolen(*svp));
-				if (!new_ncharsetid) {
-					croak("ora_ncharset value (%s) is not valid", SvPV_nolen(*svp));
-				}
-
-#ifdef ORA_OCI_112
-				if (imp_dbh->using_drcp) {
-					/* Store lookup from charset name to charset ID. */
-					(void)hv_store_ent(imp_drh->charset_hv, *svp, newSViv(new_ncharsetid), 0);
-				}
-#endif
-			}
-
-			if (new_charsetid || new_ncharsetid) { /* reset the ENV with the new charset  from above*/
-				if (new_charsetid) charsetid = new_charsetid;
-				if (new_ncharsetid) ncharsetid = new_ncharsetid;
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->envhp, OCI_HTYPE_ENV, status);
-				OCIEnvNlsCreate_log_stat(imp_dbh, &imp_dbh->envhp, init_mode, 0, NULL, NULL, NULL, 0, 0,
-							charsetid, ncharsetid, status );
-				if (status != OCI_SUCCESS) {
-					oci_error(dbh, NULL, status,
-						"OCIEnvNlsCreate. Check ORACLE_HOME (Linux) env var or PATH (Windows) and or NLS settings, permissions, etc");
-					return 0;
-				}
-			}
-
-#ifdef ORA_OCI_112
-			if (!imp_dbh->using_drcp)
-#endif
-				if (!imp_drh->envhp)	/* cache first envhp info drh as future default */
-					imp_drh->envhp = imp_dbh->envhp;
-
-			/* update the hard-coded csid constants for unicode charsets */
-			utf8_csid	   = OCINlsCharSetNameToId(imp_dbh->envhp, (void*)"UTF8");
-			al32utf8_csid  = OCINlsCharSetNameToId(imp_dbh->envhp, (void*)"AL32UTF8");
-			al16utf16_csid = OCINlsCharSetNameToId(imp_dbh->envhp, (void*)"AL16UTF16");
-		}
-
-#ifdef ORA_OCI_112
-		if (imp_dbh->using_drcp) {
-			/* Try looking up session pool again, in case ora_charsetid/ora_ncharsetid were used to specify previously used charset IDs from the NLS environment. */
-			SV *key_sv = pool_key(imp_dbh, dbname, uid, pwd, charsetid, ncharsetid);
-
-			if ((pool = pool_fetch(imp_drh, key_sv))) {
-				imp_dbh->pool = pool;
-				/* Free the current environment handle and replace it with the session pool's environment handle. */
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->envhp, OCI_HTYPE_ENV, status);
-				imp_dbh->envhp = pool->envhp;
-			}
-
-			sv_free(key_sv);
-		}
-#endif
-	}
-
-	if (!imp_dbh->errhp) {
-		OCIHandleAlloc_ok(imp_dbh, imp_dbh->envhp, &imp_dbh->errhp, OCI_HTYPE_ERROR,  status);
-	}
-
-	OCIAttrGet_log_stat(imp_dbh, imp_dbh->envhp, OCI_HTYPE_ENV, &charsetid, NULL,
-			OCI_ATTR_ENV_CHARSET_ID, imp_dbh->errhp, status);
-
-	if (status != OCI_SUCCESS) {
-		oci_error(dbh, imp_dbh->errhp, status, "OCIAttrGet OCI_ATTR_ENV_CHARSET_ID");
-		return 0;
-	}
-
-	OCIAttrGet_log_stat(imp_dbh, imp_dbh->envhp, OCI_HTYPE_ENV, &ncharsetid, NULL,
-			OCI_ATTR_ENV_NCHARSET_ID, imp_dbh->errhp, status);
-
-	if (status != OCI_SUCCESS) {
-		oci_error(dbh, imp_dbh->errhp, status, "OCIAttrGet OCI_ATTR_ENV_NCHARSET_ID");
-		return 0;
-	}
-
-	/* At this point we have charsetid & ncharsetid
-	*  note that it is possible for charsetid and ncharestid to
-	*  be distinct if NLS_LANG and NLS_NCHAR are both used.
-	*  BTW: NLS_NCHAR is set as follows: NSL_LANG=AL32UTF8
-	*/
-
-    if (DBIc_DBISTATE(imp_dbh)->debug >= 3 || dbd_verbose >= 3 ) {
-		oratext  charsetname[OCI_NLS_MAXBUFSZ];
-		oratext  ncharsetname[OCI_NLS_MAXBUFSZ];
-		OCINlsCharSetIdToName(imp_dbh->envhp,charsetname, sizeof(charsetname),charsetid );
-		OCINlsCharSetIdToName(imp_dbh->envhp,ncharsetname, sizeof(ncharsetname),ncharsetid );
-		PerlIO_printf(
-            DBIc_LOGPIO(imp_dbh),
-            "	   charset id=%d, name=%s, ncharset id=%d, name=%s"
-            " (csid: utf8=%d al32utf8=%d)\n",
-            charsetid,charsetname, ncharsetid,ncharsetname, utf8_csid, al32utf8_csid);
-#ifdef ORA_OCI_112
-		if (imp_dbh->using_drcp)
-			PerlIO_printf(DBIc_LOGPIO(imp_dbh)," Using DRCP Connection\n ");
-#endif
-	}
-
-	if (!shared_dbh) {
-
-#ifdef ORA_OCI_112
-
-		if (imp_dbh->using_drcp) { /* connect using a DRCP */
-			OCIAuthInfo *authp;
-			ub4   purity = OCI_ATTR_PURITY_SELF;
-			OraText *rettag;
-			ub4 rettagl;
-			/* pool Default values */
-			if (!imp_dbh->pool_min )
-				imp_dbh->pool_min = 0;
-			if (!imp_dbh->pool_max )
-				imp_dbh->pool_max = 40;
-			if (!imp_dbh->pool_incr)
-				imp_dbh->pool_incr = 1;
-			if (!imp_dbh->pool_rlb)
-				imp_dbh->pool_rlb = 0;
-
-			if (!pool) {
-				/* Create and cache new session pool struct. */
-				SV *key_sv = pool_key(imp_dbh, dbname, uid, pwd, charsetid, ncharsetid);
-
-				session_pool_t pool_data = {0};
-				SV *pool_sv = newSVpvn((char*)&pool_data, sizeof(pool_data));
-				HE *pool_he = hv_store_ent(imp_drh->pool_hv, key_sv, pool_sv, 0);
-				imp_dbh->pool = pool = (session_pool_t*)SvPVX(HeVAL(pool_he));
-				pool->envhp = imp_dbh->envhp;
-
-				sv_free(key_sv);
-
-				OCIHandleAlloc_ok(imp_dbh, pool->envhp, &pool->poolhp, OCI_HTYPE_SPOOL, status);
-				OCIHandleAlloc_ok(imp_dbh, pool->envhp, &authp, OCI_HTYPE_AUTHINFO, status);
-				/* Create an unshared error handle for use in pool creation and destruction. */
-				OCIHandleAlloc_ok(imp_dbh, pool->envhp, &pool->errhp, OCI_HTYPE_ERROR,  status);
-
-				OCIAttrSet_log_stat(imp_dbh, authp, OCI_HTYPE_AUTHINFO,
-					imp_dbh->driver_name, (ub4)strlen(imp_dbh->driver_name),
-					OCI_ATTR_DRIVER_NAME, pool->errhp, status);
-
-				OCIAttrSet_log_stat(imp_dbh, pool->poolhp, OCI_HTYPE_SPOOL,
-					authp, (ub4)0, OCI_ATTR_SPOOL_AUTH, pool->errhp, status);
-
-				ora_parse_uid(imp_dbh, &uid, &pwd);
-
-				OCISessionPoolCreate_log_stat(
-					imp_dbh,
-					pool->envhp,
-					pool->errhp,
-					pool->poolhp,
-					&pool->pool_name,
-					&pool->pool_namel,
-					(OraText *) dbname,
-					(ub4)strlen(dbname),
-					imp_dbh->pool_min,
-					imp_dbh->pool_max,
-					imp_dbh->pool_incr,
-					(OraText *) uid,
-					(ub4)strlen(uid),
-					(OraText *) pwd,
-					(ub4)strlen(pwd),
-					OCI_SPC_HOMOGENEOUS | (imp_dbh->pool_rlb ? 0 : OCI_SPC_NO_RLB),
-					status);
-
-				if (status != OCI_SUCCESS) {
-					oci_error(dbh, pool->errhp, status, "OCISessionPoolCreate");
-					OCIHandleFree_log_stat(imp_dbh, authp, OCI_HTYPE_AUTHINFO, status);
-					OCIHandleFree_log_stat(imp_dbh, pool->poolhp, OCI_HTYPE_SPOOL,status);
-					OCIHandleFree_log_stat(imp_dbh, pool->errhp, OCI_HTYPE_ERROR,  status);
-					/* Free the global error handle as well. */
-					OCIHandleFree_log_stat(imp_dbh, imp_dbh->errhp, OCI_HTYPE_ERROR, status);
-					OCIHandleFree_log_stat(imp_dbh, pool->envhp, OCI_HTYPE_ENV, status);
-
-					(void)hv_delete_ent(imp_drh->pool_hv, HeSVKEY(pool_he), 0, 0);
-					return 0;
-				}
-
-				OCIHandleFree_log_stat(imp_dbh, authp, OCI_HTYPE_AUTHINFO, status);
-			}
-
-			OCIHandleAlloc_ok(imp_dbh, imp_dbh->envhp, &authp, OCI_HTYPE_AUTHINFO, status);
-
-			OCIAttrSet_log_stat(imp_dbh, authp, (ub4) OCI_HTYPE_AUTHINFO,
-						&purity, (ub4) 0,(ub4) OCI_ATTR_PURITY, imp_dbh->errhp, status);
-
-			if (imp_dbh->pool_class) /*pool_class may or may not be used */
-				OCIAttrSet_log_stat(imp_dbh, authp, (ub4) OCI_HTYPE_AUTHINFO,
-							(OraText *) imp_dbh->pool_class, (ub4) imp_dbh->pool_classl,
-							(ub4) OCI_ATTR_CONNECTION_CLASS, imp_dbh->errhp, status);
-
-			/* Use session tagging to get a server session initalized with correct charsets. */
-			sprintf((char*)imp_dbh->session_tag, "csid=%d,ncsid=%d", charsetid, ncharsetid);
-
-			OCISessionGet_log_stat(imp_dbh, imp_dbh->envhp, imp_dbh->errhp, &imp_dbh->svchp, authp,
-						pool->pool_name, (ub4)strlen((char *)pool->pool_name),
-						imp_dbh->session_tag, (ub4)strlen((char *)imp_dbh->session_tag), &rettag, &rettagl, &imp_dbh->session_tag_found, status);
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, imp_dbh->errhp, status, "OCISessionGet");
-				OCIHandleFree_log_stat(imp_dbh, authp, OCI_HTYPE_AUTHINFO, status);
-				return 0;
-			}
-
-			/* Update number of active sessions in the pool. */
-			++imp_dbh->pool->active_sessions;
-
-			OCIHandleFree_log_stat(imp_dbh, authp, OCI_HTYPE_AUTHINFO, status);
-
-			/* Get server and session handles from service context handle, allocated by OCISessionGet. */
-			OCIAttrGet_log_stat(imp_dbh, imp_dbh->svchp, OCI_HTYPE_SVCCTX, &imp_dbh->srvhp, NULL,
-				OCI_ATTR_SERVER, imp_dbh->errhp, status);
-			OCIAttrGet_log_stat(imp_dbh, imp_dbh->svchp, OCI_HTYPE_SVCCTX, &imp_dbh->seshp, NULL,
-				OCI_ATTR_SESSION, imp_dbh->errhp, status);
-
-			if (DBIc_DBISTATE(imp_dbh)->debug >= 4 || dbd_verbose >= 4 ) {
-				PerlIO_printf(
-				DBIc_LOGPIO(imp_dbh),
-					"Using DRCP with session settings min=%d, max=%d, and increment=%d\n",
-					imp_dbh->pool_min,
-					imp_dbh->pool_max,
-					imp_dbh->pool_incr);
-				if (imp_dbh->pool_class)
-					PerlIO_printf(
-						DBIc_LOGPIO(imp_dbh),
-						"with connection class=%s\n",imp_dbh->pool_class);
-			}
-
-		}
-		else {
-#endif /* ORA_OCI_112 */
-
-			SV **sess_mode_type_sv;
-			ub4  sess_mode_type = OCI_DEFAULT;
-			ub4  cred_type;
-			DBD_ATTRIB_GET_IV(attr, "ora_session_mode",16, sess_mode_type_sv, sess_mode_type);
-
-			OCIHandleAlloc_ok(imp_dbh, imp_dbh->envhp, &imp_dbh->srvhp, OCI_HTYPE_SERVER, status);
-			OCIHandleAlloc_ok(imp_dbh, imp_dbh->envhp, &imp_dbh->svchp, OCI_HTYPE_SVCCTX, status);
-			OCIHandleAlloc_ok(imp_dbh, imp_dbh->envhp, &imp_dbh->seshp, OCI_HTYPE_SESSION, status);
-			OCIServerAttach_log_stat(imp_dbh, dbname,OCI_DEFAULT, status);
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, imp_dbh->errhp, status, "OCIServerAttach");
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION,status);
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->srvhp, OCI_HTYPE_SERVER, status);
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->errhp, OCI_HTYPE_ERROR, status);
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->svchp, OCI_HTYPE_SVCCTX, status);
-				if (imp_dbh->envhp != imp_drh->envhp) {
-					OCIHandleFree_log_stat(imp_dbh, imp_dbh->envhp, OCI_HTYPE_ENV, status);
-				}
-				return 0;
-			}
-
-
-			OCIAttrSet_log_stat(imp_dbh, imp_dbh->svchp, OCI_HTYPE_SVCCTX, imp_dbh->srvhp,
-							(ub4) 0, OCI_ATTR_SERVER, imp_dbh->errhp, status);
-
-			cred_type = ora_parse_uid(imp_dbh, &uid, &pwd);
-
-#ifdef ORA_OCI_112
-			OCIAttrSet_log_stat(imp_dbh, imp_dbh->seshp, (ub4)OCI_HTYPE_SESSION,
-				imp_dbh->driver_name, (ub4)strlen(imp_dbh->driver_name),
-				(ub4)OCI_ATTR_DRIVER_NAME, imp_dbh->errhp, status);
-#endif
-
-			OCISessionBegin_log_stat(imp_dbh, imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp,cred_type, sess_mode_type, status);
-
-			if (status == OCI_SUCCESS_WITH_INFO) {
-				/* eg ORA-28011: the account will expire soon; change your password now */
-				oci_error(dbh, imp_dbh->errhp, status, "OCISessionBegin");
-				status = OCI_SUCCESS;
-			}
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, imp_dbh->errhp, status, "OCISessionBegin");
-				OCIServerDetach_log_stat(imp_dbh, imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT, status);
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION,status);
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->srvhp, OCI_HTYPE_SERVER, status);
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->errhp, OCI_HTYPE_ERROR,  status);
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->svchp, OCI_HTYPE_SVCCTX, status);
-				if (imp_dbh->envhp != imp_drh->envhp) {
-					OCIHandleFree_log_stat(imp_dbh, imp_dbh->envhp, OCI_HTYPE_ENV, status);
-				}
-				return 0;
-			}
-
-			OCIAttrSet_log_stat(imp_dbh, imp_dbh->svchp, (ub4) OCI_HTYPE_SVCCTX,
-						imp_dbh->seshp, (ub4) 0,(ub4) OCI_ATTR_SESSION, imp_dbh->errhp, status);
-#ifdef ORA_OCI_112
-		}
-#endif
-
-	}
-
-	DBIc_IMPSET_on(imp_dbh);	/* imp_dbh set up now			*/
-	DBIc_ACTIVE_on(imp_dbh);	/* call disconnect before freeing	*/
-	imp_dbh->ph_type = 1;	/* SQLT_CHR "(ORANET TYPE) character string" */
-	imp_dbh->ph_csform = 0;	/* meaning auto (see dbd_rebind_ph)	*/
+        imp_dbh->server_version = 0;
+	imp_dbh->get_oci_handle = oci_db_handle;
 
 #if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
-	if (shared_dbh_ssv && !shared_dbh) {
-	/* much of this could be replaced with a single sv_setpvn() */
-		(void)SvUPGRADE(shared_dbh_priv_sv, SVt_PV);
-		SvGROW(shared_dbh_priv_sv, sizeof(imp_dbh_t) + 1) ;
-		SvCUR (shared_dbh_priv_sv) = sizeof(imp_dbh_t) ;
-		imp_dbh->refcnt = 1 ;
-		imp_dbh->shared_dbh_priv_sv = shared_dbh_priv_sv ;
-		memcpy(SvPVX(shared_dbh_priv_sv) + DBH_DUP_OFF, ((char *)imp_dbh) + DBH_DUP_OFF, DBH_DUP_LEN) ;
-		SvSETMAGIC(shared_dbh_priv_sv);
-		imp_dbh->shared_dbh = (imp_dbh_t *)SvPVX(shared_dbh_ssv->sv);
+        imp_dbh->is_shared = 0;
+        svp = DBD_ATTRIB_GET_SVP(attr,"ora_dbh_share",13);
+        if(svp != NULL)
+        {
+            MAGIC * mg;
+            shared_sv = *svp;
+            tracer(2, 3,  "trying to find shared session\n");
+            while (SvROK(shared_sv)) shared_sv = SvRV(shared_sv) ;
+            /* check if this is shared scalar by finding appropriate magic */
+            if(SvTYPE(shared_sv) < SVt_PVMG ||
+                (mg = mg_find(shared_sv, PERL_MAGIC_shared_scalar)) == NULL)
+                return local_error(
+                    aTHX_ dbh,"value of ora_dbh_share must be a scalar that is shared"
+                ) ;
+
+            /* now we should lock access. Note, locking of unshared variable croaks */
+            /* this is unlocked automatically when current XS function ends */
+            SvLOCK (shared_sv) ;
+            /* copy value from shared part, just in case */
+            SvGETMAGIC(shared_sv);
+            shared_dbh_len = SvCUR(shared_sv) ;
+
+            if (shared_dbh_len == sizeof (imp_dbh_t)) {
+                imp_dbh_t * shared_dbh = (imp_dbh_t *)SvPVX(shared_sv) ;
+                /* initialize from shared data */
+                memcpy (
+                    ((char *)imp_dbh) + DBH_DUP_OFF,
+                    ((char *)shared_dbh) + DBH_DUP_OFF,
+                    DBH_DUP_LEN
+                );
+                imp_dbh->is_shared = 1;
+
+                /* using private errhp does not make sense really because
+                 * one can not use this copy of connection at the same
+                 * time in different threads. There are transactions and
+                 * if some threads starts transaction, then other thread
+                 * should not accidently finish it. So if the connections
+                 * are used carefully, then they don't need separate errhp
+                 */
+                tracer(2, 3,  "dbd_db_login: shared session %p\n", shared_dbh->seshp);
+                (void)hv_delete((HV*)SvRV(attr), "ora_dbh_share", 13, G_DISCARD);
+                /* nothing else to do with this handle */
+                return activate_dbh(aTHX_ &ctrl);
+            }
+            else if (shared_dbh_len != 0)
+                return local_error(aTHX_ dbh, "Invalid value for ora_dbh_share %d vs %d",
+                        (int)shared_dbh_len, (int)sizeof(imp_dbh_t)) ;
+            /* indicate that this connection is shared */
+            imp_dbh->is_shared = 1;
 	}
 #endif
 
-    /* set up TAF callback if wanted */
 
-    if (imp_dbh->taf_function){
-        if (enable_taf(dbh, imp_dbh) == 0) return 0;
+        /* Get desired charset and ncharset */
+        if ((svp = DBD_ATTRIB_GET_SVP(attr, "ora_charset", 11))) {
+            if (!SvPOK(*svp)) return local_error(
+                    aTHX_ dbh, "ora_charset is not a string"
+            );
+            ctrl.cset = SvPV_nolen(*svp);
+            /* don't remove attribute because I need pointer */
+        }
+
+        if ((svp = DBD_ATTRIB_GET_SVP(attr, "ora_ncharset", 12))) {
+            if (!SvPOK(*svp)) return local_error(
+                    aTHX_ dbh, "ora_ncharset is not a string"
+            );
+            ctrl.ncset = SvPV_nolen(*svp);
+        }
+        ctrl.session_mode = OCI_DEFAULT;
+        if ((svp = DBD_ATTRIB_GET_SVP(attr, "ora_session_mode", 16))) {
+            ctrl.session_mode = SvIV(*svp);
+            hv_delete((HV*)SvRV(attr), "ora_session_mode", 16, G_DISCARD);
+        }
+        if(!cnx_establish(aTHX_ &ctrl)) return FALSE;
+
+
+#if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
+	if (imp_dbh->is_shared != 0 && 0 == shared_dbh_len) {
+#ifdef ORA_OCI_112
+            SV * tag = imp_dbh->session_tag;
+            imp_dbh->session_tag = NULL;
+#endif
+            tracer(2, 3,  "saving shared session %p\n", imp_dbh->seshp);
+            sv_setpvn_mg(shared_sv, (char*)imp_dbh, sizeof(*imp_dbh));
+#ifdef ORA_OCI_112
+            imp_dbh->session_tag = tag;
+#endif
 	}
-
-	return 1;
+#endif
+        return activate_dbh(aTHX_ &ctrl);
 }
 
 
@@ -1154,55 +799,33 @@ dbd_db_disconnect(SV *dbh, imp_dbh_t *imp_dbh)
 {
 	dTHX;
 	dTHR;
-	int refcnt = 1 ;
-
-#if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
-	if (DBIc_IMPSET(imp_dbh) && imp_dbh->shared_dbh) {
-		SvLOCK (imp_dbh->shared_dbh_priv_sv) ;
-		refcnt = imp_dbh -> shared_dbh -> refcnt ;
-	}
-#endif
 
 	/* We assume that disconnect will always work	*/
 	/* since most errors imply already disconnected.	*/
 	DBIc_ACTIVE_off(imp_dbh);
 
-	/* Oracle will commit on an orderly disconnect.	*/
-	/* See DBI Driver.xst file for the DBI approach.	*/
-
-	if (refcnt == 1 ) {
+#if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
+        /* do nothing for connections stored in shared variables */
+        if(imp_dbh->is_shared != 0)
+        {
 #ifdef ORA_OCI_112
-		if (imp_dbh->using_drcp) {
-			sword status;
-			/* Release session, tagged for future retrieval. */
-			OCISessionRelease_log_stat(imp_dbh, imp_dbh->svchp, imp_dbh->errhp,
-				imp_dbh->session_tag, (ub4)strlen((char *)imp_dbh->session_tag), imp_dbh->session_tag_found ? OCI_DEFAULT : OCI_SESSRLS_RETAG, status);
-			if (status != OCI_SUCCESS) {
-				oci_error(dbh, imp_dbh->errhp, status, "OCISessionRelease");
-				return 0;
-			}
+            /* just in case, drop session_tag if it is set
+             * normally it is used during session release */
+            if(imp_dbh->session_tag != NULL)
+            {
+                SvREFCNT_dec(imp_dbh->session_tag);
+                imp_dbh->session_tag = NULL;
+            }
+#endif
+            return TRUE;
+        }
+#endif
+        cnx_detach(aTHX_ imp_dbh);
 
-			/* Update number of active sessions in the pool */
-			--imp_dbh->pool->active_sessions;
-		}
-		else {
-#endif
-			sword s_se, s_sd;
-			OCISessionEnd_log_stat(imp_dbh, imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp,
-			  OCI_DEFAULT, s_se);
-			if (s_se) oci_error(dbh, imp_dbh->errhp, s_se, "OCISessionEnd");
-			OCIServerDetach_log_stat(imp_dbh, imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT, s_sd);
-			if (s_sd) oci_error(dbh, imp_dbh->errhp, s_sd, "OCIServerDetach");
-			if (s_se != OCI_SUCCESS || s_sd != OCI_SUCCESS)
-				return 0;
-#ifdef ORA_OCI_112
-		}
-#endif
-	}
 	/* We don't free imp_dbh since a reference still exists	*/
 	/* The DESTROY method is the only one to 'free' memory.	*/
 	/* Note that statement objects may still exists for this dbh!	*/
-	return 1;
+	return TRUE;
 }
 
 
@@ -1210,28 +833,10 @@ void
 dbd_db_destroy(SV *dbh, imp_dbh_t *imp_dbh)
 {
 	dTHX ;
-	int refcnt = 1 ;
-	sword status;
-	D_imp_drh_from_dbh;
-
-#if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
-	if (DBIc_IMPSET(imp_dbh) && imp_dbh->shared_dbh) {
-		SvLOCK (imp_dbh->shared_dbh_priv_sv) ;
-		refcnt = imp_dbh -> shared_dbh -> refcnt-- ;
-	}
-#endif
-
-	if (refcnt == 1) {
-		if (DBIc_ACTIVE(imp_dbh))
-			dbd_db_disconnect(dbh, imp_dbh);
-		if (is_extproc)
-			goto dbd_db_destroy_out;
-
-		if (imp_dbh->taf_function){
-            disable_taf(imp_dbh);
-		}
-
+        if (DBIc_ACTIVE(imp_dbh)) dbd_db_disconnect(dbh, imp_dbh);
+	DBIc_IMPSET_off(imp_dbh);
         if (imp_dbh->taf_function) {
+            disable_taf(imp_dbh);
             SvREFCNT_dec(imp_dbh->taf_function);
             imp_dbh->taf_function = NULL;
         }
@@ -1240,43 +845,12 @@ dbd_db_destroy(SV *dbh, imp_dbh_t *imp_dbh)
             imp_dbh->taf_ctx.dbh_ref = NULL;
         }
 
-
-#ifdef ORA_OCI_112
-		if (imp_dbh->using_drcp) {
-			OCIHandleFree_log_stat(imp_dbh, imp_dbh->errhp, OCI_HTYPE_ERROR,  status);
-		}
-		else {
+#if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
+        /* on shared cnx only decrement reference count */
+        if(imp_dbh->is_shared != 0) return;
 #endif
-			OCIHandleFree_log_stat(imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION,status);
-			OCIHandleFree_log_stat(imp_dbh, imp_dbh->svchp, OCI_HTYPE_SVCCTX, status);
-			OCIHandleFree_log_stat(imp_dbh, imp_dbh->srvhp, OCI_HTYPE_SERVER, status);
-			OCIHandleFree_log_stat(imp_dbh, imp_dbh->errhp, OCI_HTYPE_ERROR,  status);
-			/* free session environment handle */
-			if (imp_dbh->envhp != imp_drh->envhp) {
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->envhp, OCI_HTYPE_ENV, status);
-				if ( status == OCI_SUCCESS ) {
-					imp_dbh->envhp = NULL;
-				}
-			/* free global environment handle during destruction of last connection */
-			} else if ( (imp_dbh->envhp == imp_drh->envhp) && (SvTRUE(perl_get_sv("DBI::PERL_ENDING",0))) ) {
-				OCIHandleFree_log_stat(imp_dbh, imp_dbh->envhp, OCI_HTYPE_ENV, status);
-				if ( status == OCI_SUCCESS ) {
-					imp_dbh->envhp = NULL;
-					imp_drh->envhp = NULL;
-				}
-			}
-#ifdef ORA_OCI_112
-		}
-#endif
-	}
-	else {
-		/* A new error handle is allocated on each new connect, so it is also freed when
-		   refcnt > 1. Note that we cannot have a common free here, since it is an error
-		   to free the environment handle before the error handle. */
-		OCIHandleFree_log_stat(imp_dbh, imp_dbh->errhp, OCI_HTYPE_ERROR, status);
-	}
-dbd_db_destroy_out:
-	DBIc_IMPSET_off(imp_dbh);
+        tracer(3, 3, "clearing session %p\n", imp_dbh->seshp);
+        cnx_clean(aTHX_ imp_dbh);
 }
 
 
@@ -1285,11 +859,28 @@ dbd_take_imp_data(SV *dbh, imp_xxh_t *imp_xxh, void* foo)
 {
 	dTHX;
 	D_imp_dbh(dbh);
-	D_imp_drh_from_dbh;
-
-	/* By using ithread, handles will leak in dbd_dr_destroy() */
-	imp_drh->leak_handles = 1;
-
+        tracer(3, 3, "take_imp for %p (session %p)\n", imp_dbh, imp_dbh->seshp);
+        if (imp_dbh->taf_function) {
+            disable_taf(imp_dbh);
+            SvREFCNT_dec(imp_dbh->taf_function);
+            imp_dbh->taf_function = NULL;
+        }
+        if (imp_dbh->taf_ctx.dbh_ref) {
+            SvREFCNT_dec(SvRV(imp_dbh->taf_ctx.dbh_ref));
+            imp_dbh->taf_ctx.dbh_ref = NULL;
+        }
+#ifdef ORA_OCI_112
+        if(imp_dbh->session_tag != NULL)
+        {
+            SvREFCNT_dec(imp_dbh->session_tag);
+            imp_dbh->session_tag = NULL;
+        }
+#endif
+        /* we do nothing else here because the copy of current state is saved by
+         * SUPER::take_imp_data and no other method shall be called on this
+         * handle. If user calls something, then it is not our problem.
+         * Wether DESTROY nor DISCONNECT are called by DBI
+         */
 	/* Indicate that SUPER::take_imp_data should be called. */
 	return &PL_sv_no;
 }
@@ -1315,70 +906,112 @@ dbd_db_STORE_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv, SV *valuesv)
 	}
 #ifdef ORA_OCI_112
 	else if (kl==15 && strEQ(key, "ora_driver_name") ) {
-		imp_dbh->driver_name = (char *) SvPV (valuesv, vl );
-		OCIAttrSet_log_stat(
-            imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION, imp_dbh->driver_name,
-            (ub4)vl, OCI_ATTR_DRIVER_NAME, imp_dbh->errhp, status);
+            (void)local_error(
+                aTHX_ dbh, "ora_driver_name can not be changed"
+            );
 	}
 	else if (kl==8 && strEQ(key, "ora_drcp") ) {
-		imp_dbh->using_drcp = 1;
+            (void)local_error(
+                aTHX_ dbh, "ora_drcp can not be changed"
+            );
 	}
 	else if (kl==14 && strEQ(key, "ora_drcp_class") ) {
-		STRLEN vl;
-		imp_dbh->pool_class = (text *) SvPV (valuesv, vl );
-		imp_dbh->pool_classl= (ub4) vl;
+            (void)local_error(
+                aTHX_ dbh, "ora_drcp_class can not be changed"
+            );
+	}
+	else if (kl==12 && strEQ(key, "ora_drcp_tag") ) {
+#if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
+            if(imp_dbh->is_shared != 0)
+            {
+                (void)local_error(
+                    aTHX_ dbh, "ora_drcp_tag not supported for shared DBH"
+                );
+            }
+            else
+#endif
+            if(cnx_is_pooled_session(aTHX_ dbh, imp_dbh))
+            {
+                if(imp_dbh->session_tag != NULL) SvREFCNT_dec(imp_dbh->session_tag);
+                imp_dbh->session_tag = newSVsv(valuesv);
+            }
+            else (void)local_error(
+                aTHX_ dbh, "ora_drcp_tag is not used without DRCP"
+            );
 	}
 	else if (kl==12 && strEQ(key, "ora_drcp_min") ) {
-		imp_dbh->pool_min = SvIV (valuesv);
+		cnx_pool_min(aTHX_ dbh, imp_dbh, (ub4)SvIV(valuesv));
+	}
+	else if (kl==13 && strEQ(key, "ora_drcp_mode") ) {
+		cnx_pool_mode(aTHX_ dbh, imp_dbh, (ub4)SvIV(valuesv));
+	}
+	else if (kl==13 && strEQ(key, "ora_drcp_wait") ) {
+		cnx_pool_wait(aTHX_ dbh, imp_dbh, (ub4)SvIV(valuesv));
 	}
 	else if (kl==12 && strEQ(key, "ora_drcp_max") ) {
-		imp_dbh->pool_max = SvIV (valuesv);
+		cnx_pool_max(aTHX_ dbh, imp_dbh, (ub4)SvIV(valuesv));
 	}
 	else if (kl==13 && strEQ(key, "ora_drcp_incr") ) {
-		imp_dbh->pool_incr = SvIV (valuesv);
+		cnx_pool_incr(aTHX_ dbh, imp_dbh, (ub4)SvIV(valuesv));
 	}
 	else if (kl==12 && strEQ(key, "ora_drcp_rlb") ) {
-		imp_dbh->pool_rlb = SvIV (valuesv);
+            /* ignore it here, too late to do anything */
 	}
 #endif
 	else if (kl==16 && strEQ(key, "ora_taf_function") ) {
-        if (imp_dbh->taf_function)
-            SvREFCNT_dec(imp_dbh->taf_function);
-        imp_dbh->taf_function = newSVsv(valuesv);
+            if (imp_dbh->taf_function)
+                SvREFCNT_dec(imp_dbh->taf_function);
+            imp_dbh->taf_function = newSVsv(valuesv);
 
-        if (SvTRUE(valuesv)) {
-            enable_taf(dbh, imp_dbh);
-        } else {
-            disable_taf(imp_dbh);
-        }
+            if (SvTRUE(valuesv)) {
+                if(!enable_taf(aTHX_ dbh, imp_dbh)) return FALSE;
+            } else {
+                disable_taf(imp_dbh);
+            }
 	}
 #ifdef OCI_ATTR_ACTION
 	else if (kl==10 && strEQ(key, "ora_action") ) {
-		imp_dbh->action = (char *) SvPV (valuesv, vl );
-		imp_dbh->actionl= (ub4) vl;
-		OCIAttrSet_log_stat(imp_dbh, imp_dbh->seshp,OCI_HTYPE_SESSION, imp_dbh->action,imp_dbh->actionl,OCI_ATTR_ACTION,imp_dbh->errhp, status);
-
+            char * action = (char *) SvPV (valuesv, vl );
+            OCIAttrSet_log_stat(imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION,
+                    action,(ub4)vl, OCI_ATTR_ACTION, imp_dbh->errhp, status);
+            if(status != OCI_SUCCESS) (void)oci_error(
+                    dbh, imp_dbh->errhp, status, "OCIAttrSet OCI_ATTR_ACTION");
 	}
 #endif
 	else if (kl==21 && strEQ(key, "ora_client_identifier") ) {
-		imp_dbh->client_identifier = (char *) SvPV (valuesv, vl );
-		imp_dbh->client_identifierl= (ub4) vl;
-		OCIAttrSet_log_stat(imp_dbh, imp_dbh->seshp,OCI_HTYPE_SESSION, imp_dbh->client_identifier,imp_dbh->client_identifierl,OCI_ATTR_CLIENT_IDENTIFIER,imp_dbh->errhp, status);
-
+            char * cid = (char *) SvPV (valuesv, vl );
+            OCIAttrSet_log_stat(imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION,
+                    cid,(ub4)vl,OCI_ATTR_CLIENT_IDENTIFIER,
+                    imp_dbh->errhp, status
+            );
+            if(status != OCI_SUCCESS) (void)oci_error(
+                    dbh, imp_dbh->errhp, status,
+                    "OCIAttrSet OCI_ATTR_CLIENT_IDENTIFIER");
 	}
 #ifdef OCI_ATTR_CLIENT_INFO
     else if (kl==15 && strEQ(key, "ora_client_info") ) {
-		imp_dbh->client_info = (char *) SvPV (valuesv, vl );
-		imp_dbh->client_infol= (ub4) vl;
-		OCIAttrSet_log_stat(imp_dbh, imp_dbh->seshp,OCI_HTYPE_SESSION, imp_dbh->client_info,imp_dbh->client_infol,OCI_ATTR_CLIENT_INFO,imp_dbh->errhp, status);
+		char * client_info = (char *) SvPV (valuesv, vl );
+		OCIAttrSet_log_stat(imp_dbh,
+                        imp_dbh->seshp,OCI_HTYPE_SESSION,
+                        client_info,(ub4)vl,
+                        OCI_ATTR_CLIENT_INFO,imp_dbh->errhp, status
+                );
+                if(status != OCI_SUCCESS) (void)oci_error(
+                        dbh, imp_dbh->errhp, status,
+                        "OCIAttrSet OCI_ATTR_CLIENT_INFO");
 	}
 #endif
 #ifdef OCI_ATTR_MODULE
 	else if (kl==15 && strEQ(key, "ora_module_name") ) {
-		imp_dbh->module_name = (char *) SvPV (valuesv, vl );
-		imp_dbh->module_namel= (ub4) vl;
-		OCIAttrSet_log_stat(imp_dbh, imp_dbh->seshp,OCI_HTYPE_SESSION, imp_dbh->module_name,imp_dbh->module_namel,OCI_ATTR_MODULE,imp_dbh->errhp, status);
-
+		char * module_name = (char *) SvPV (valuesv, vl );
+		OCIAttrSet_log_stat(imp_dbh,
+                        imp_dbh->seshp,OCI_HTYPE_SESSION,
+                        module_name, (ub4)vl,
+                        OCI_ATTR_MODULE,imp_dbh->errhp, status
+                );
+                if(status != OCI_SUCCESS) (void)oci_error(
+                        dbh, imp_dbh->errhp, status,
+                        "OCIAttrSet OCI_ATTR_MODULE");
 	}
 #endif
 	else if (kl==20 && strEQ(key, "ora_oci_success_warn") ) {
@@ -1436,6 +1069,7 @@ dbd_db_FETCH_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv)
 	SV *retsv = Nullsv;
 	/* Default to caching results for DBI dispatch quick_FETCH	*/
 	int cacheit = FALSE;
+        sword status;
 
 	/* AutoCommit FETCH via DBI */
 
@@ -1444,25 +1078,57 @@ dbd_db_FETCH_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv)
 	}
 #ifdef ORA_OCI_112
 	else if (kl==15 && strEQ(key, "ora_driver_name") ) {
-		retsv = newSVpv((char *)imp_dbh->driver_name,0);
+            char * driver_name;
+            ub4 namelen;
+            OCIAttrGet_log_stat(
+                imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION, &driver_name,
+                &namelen, OCI_ATTR_DRIVER_NAME, imp_dbh->errhp, status
+            );
+            if(status == OCI_SUCCESS)
+		retsv = newSVpv(driver_name, namelen);
 	}
 	else if (kl==8 && strEQ(key, "ora_drcp") ) {
-		retsv = newSViv(imp_dbh->using_drcp);
+		retsv = newSViv(cnx_is_pooled_session(aTHX_ dbh, imp_dbh));
 	}
 	else if (kl==14 && strEQ(key, "ora_drcp_class") ) {
-		retsv = newSVpv((char *)imp_dbh->pool_class, 0);
+            char * pool_name;
+            ub4 namelen;
+            OCIAttrGet_log_stat(
+                imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION, &pool_name,
+                &namelen, OCI_ATTR_CONNECTION_CLASS, imp_dbh->errhp, status
+            );
+            if(status == OCI_SUCCESS)
+		retsv = newSVpv(pool_name, namelen);
+            else (void)oci_error(dbh, imp_dbh->errhp, status,
+                        "OCIAttrGet OCI_ATTR_CONNECTION_CLASS");
 	}
+	else if (kl==12 && strEQ(key, "ora_drcp_tag") ) {
+            if(imp_dbh->session_tag)
+            {
+                retsv = imp_dbh->session_tag;
+                SvREFCNT_inc(retsv);
+            }
+        }
 	else if (kl==12 && strEQ(key, "ora_drcp_min") ) {
-		retsv = newSViv(imp_dbh->pool_min);
+		retsv = newSViv(cnx_get_pool_min(aTHX_ dbh, imp_dbh));
+	}
+	else if (kl==13 && strEQ(key, "ora_drcp_mode") ) {
+		retsv = newSViv(cnx_get_pool_mode(aTHX_ dbh, imp_dbh));
+	}
+	else if (kl==13 && strEQ(key, "ora_drcp_wait") ) {
+		retsv = newSViv(cnx_get_pool_wait(aTHX_ dbh, imp_dbh));
 	}
 	else if (kl==12 && strEQ(key, "ora_drcp_max") ) {
-		retsv = newSViv(imp_dbh->pool_max);
+		retsv = newSViv(cnx_get_pool_max(aTHX_ dbh, imp_dbh));
 	}
 	else if (kl==13 && strEQ(key, "ora_drcp_incr") ) {
-		retsv = newSViv(imp_dbh->pool_incr);
+		retsv = newSViv(cnx_get_pool_incr(aTHX_ dbh, imp_dbh));
 	}
 	else if (kl==12 && strEQ(key, "ora_drcp_rlb") ) {
-		retsv = newSViv(imp_dbh->pool_rlb);
+		retsv = newSViv(cnx_get_pool_rlb(aTHX_ dbh, imp_dbh));
+	}
+	else if (kl==13 && strEQ(key, "ora_drcp_used") ) {
+		retsv = newSViv(cnx_get_pool_used(aTHX_ dbh, imp_dbh));
 	}
 #endif
 	else if (kl==16 && strEQ(key, "ora_taf_function") ) {
@@ -1472,18 +1138,54 @@ dbd_db_FETCH_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv)
 	}
 #ifdef OCI_ATTR_ACTION
 	else if (kl==10 && strEQ(key, "ora_action")) {
-		retsv =  newSVpv((char *)imp_dbh->action,0);
+            char * name;
+            ub4 namelen;
+            OCIAttrGet_log_stat(
+                imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION, &name,
+                &namelen, OCI_ATTR_ACTION, imp_dbh->errhp, status
+            );
+            if(status == OCI_SUCCESS) retsv = newSVpv(name, namelen);
+            else (void)oci_error(dbh, imp_dbh->errhp, status,
+                        "OCIAttrGet OCI_ATTR_ACTION");
 	}
 #endif
     else if (kl==21 && strEQ(key, "ora_client_identifier")) {
-		retsv =  newSVpv((char *)imp_dbh->client_identifier,0);
+            char * name;
+            ub4 namelen;
+            OCIAttrGet_log_stat(
+                imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION, &name,
+                &namelen, OCI_ATTR_CLIENT_IDENTIFIER, imp_dbh->errhp, status
+            );
+            if(status == OCI_SUCCESS) retsv = newSVpv(name, namelen);
+            else (void)oci_error(dbh, imp_dbh->errhp, status,
+                        "OCIAttrGet OCI_ATTR_CLIENT_IDENTIFIER");
 	}
+#ifdef OCI_ATTR_CLIENT_INFO
 	else if (kl==15 && strEQ(key, "ora_client_info")) {
-		retsv =  newSVpv((char *)imp_dbh->client_info,0);
+            char * name;
+            ub4 namelen;
+            OCIAttrGet_log_stat(
+                imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION, &name,
+                &namelen, OCI_ATTR_CLIENT_INFO, imp_dbh->errhp, status
+            );
+            if(status == OCI_SUCCESS) retsv = newSVpv(name, namelen);
+            else (void)oci_error(dbh, imp_dbh->errhp, status,
+                        "OCIAttrGet OCI_ATTR_CLIENT_INFO");
 	}
+#endif
+#ifdef OCI_ATTR_MODULE
 	else if (kl==15 && strEQ(key, "ora_module_name")) {
-		retsv =  newSVpv((char *)imp_dbh->module_name,0);
+            char * name;
+            ub4 namelen;
+            OCIAttrGet_log_stat(
+                imp_dbh, imp_dbh->seshp, OCI_HTYPE_SESSION, &name,
+                &namelen, OCI_ATTR_MODULE, imp_dbh->errhp, status
+            );
+            if(status == OCI_SUCCESS) retsv = newSVpv(name, namelen);
+            else (void)oci_error(dbh, imp_dbh->errhp, status,
+                        "OCIAttrGet OCI_ATTR_MODULE");
 	}
+#endif
 	else if (kl==20 && strEQ(key, "ora_oci_success_warn")) {
 		retsv = newSViv (oci_warn);
 	}
@@ -1574,7 +1276,7 @@ createxmlfromstring(SV *sth, imp_sth_t *imp_sth, SV *source){
 		if (status != OCI_SUCCESS) {
 			oci_error(sth, imp_sth->errhp, status, "OCILobCreateTemporary");
 		}
-		csid = (SvUTF8(source) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(csform);
+		csid = (SvUTF8(source) && !CS_IS_UTF8(csid)) ? utf8_csid : CSFORM_IMPLIED_CSID(imp_dbh, csform);
 		buflen = len;
 		OCILobWriteAppend_log_stat(imp_dbh, imp_dbh->svchp, imp_dbh->errhp, src_ptr,
 						&buflen, bufp, (ub4)len, OCI_ONE_PIECE,
@@ -1883,7 +1585,7 @@ int
 dbd_rebind_ph_varchar2_table(SV *sth, imp_sth_t *imp_sth, phs_t *phs)
 {
 	dTHX;
-	/*D_imp_dbh_from_sth ;*/
+	D_imp_dbh_from_sth;
 	sword status;
 	int trace_level = DBIc_DBISTATE(imp_sth)->debug;
 	AV *arr;
@@ -1972,9 +1674,9 @@ dbd_rebind_ph_varchar2_table(SV *sth, imp_sth_t *imp_sth, phs_t *phs)
 			}
 			if (csform != SQLCS_NCHAR) {
 			/* try to default csform to avoid translation through non-unicode */
-			if (CSFORM_IMPLIES_UTF8(SQLCS_NCHAR))		/* prefer NCHAR */
+			if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_NCHAR))		/* prefer NCHAR */
 				csform = SQLCS_NCHAR;
-			else if (CSFORM_IMPLIES_UTF8(SQLCS_IMPLICIT))
+			else if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT))
 				csform = SQLCS_IMPLICIT;
 			/* else leave csform == 0 */
 			if (trace_level  || dbd_verbose >= 3 )
@@ -2789,7 +2491,8 @@ dbd_rebind_ph_char(imp_sth_t *imp_sth, phs_t *phs)
                 SvGROW(phs->sv,(STRLEN) (unsigned int)phs->maxlen-1);
                 if (DBIc_DBISTATE(imp_sth)->debug >= 6 || dbd_verbose >= 6) {
                     PerlIO_printf(DBIc_LOGPIO(imp_sth),
-                                  "Growing 96 phs sv to %ld resulted in buffer %ld\n", phs->maxlen - 1, SvLEN(phs->sv));
+                                  "Growing 96 phs sv to %ld resulted in buffer %ld\n",
+                                  (long)(phs->maxlen - 1), (long)SvLEN(phs->sv));
                 }
 			} else {
 				STRLEN min_len = 28;
@@ -2803,7 +2506,8 @@ dbd_rebind_ph_char(imp_sth_t *imp_sth, phs_t *phs)
                 SvGROW(phs->sv, (STRLEN)(((unsigned int) phs->maxlen <= min_len) ? min_len : (unsigned int) phs->maxlen));
                 if (DBIc_DBISTATE(imp_sth)->debug >= 6 || dbd_verbose >= 6) {
                     PerlIO_printf(DBIc_LOGPIO(imp_sth),
-                                  "Growing phs sv to %ld resulted in buffer %ld\n", phs->maxlen +1, SvLEN(phs->sv));
+                                  "Growing phs sv to %ld resulted in buffer %ld\n",
+                                  (long)(phs->maxlen +1), (long)SvLEN(phs->sv));
                 }
 			}
 		}
@@ -2836,7 +2540,7 @@ dbd_rebind_ph_char(imp_sth_t *imp_sth, phs_t *phs)
 	} else {
         if (DBIc_DBISTATE(imp_sth)->debug >= 6|| dbd_verbose >= 6 ) {
             PerlIO_printf(DBIc_LOGPIO(imp_sth),
-                          "Changing maxlen to %ld\n", SvLEN(phs->sv));
+                          "Changing maxlen to %ld\n", (long)SvLEN(phs->sv));
         }
 		phs->maxlen  = ((IV)SvLEN(phs->sv)); /* avail buffer space (64bit safe) Logicaly maxlen should never change but it does why I know not - MJE because SvGROW can allocate more than you ask for - anyway - I fixed that and it doesn't grow anymore */
 
@@ -2924,10 +2628,6 @@ pp_exec_rset(SV *sth, imp_sth_t *imp_sth, phs_t *phs, int pre_exec)
                 DBIc_LOGPIO(imp_sth),
                 " pp_exec_rset bind %s - allocating new sth...\n",
                 phs->name);
-
-        /* extproc deallocates everything for us */
-		if (is_extproc)
-			return 1;
 
 		if (!phs->desc_h || 1) { /* XXX phs->desc_t != OCI_HTYPE_STMT) */
 			if (phs->desc_h) {
@@ -3045,8 +2745,8 @@ pp_exec_rset(SV *sth, imp_sth_t *imp_sth, phs_t *phs, int pre_exec)
 		if (DBIc_DBISTATE(imp_sth)->debug >= 3 || dbd_verbose >= 3 )
 			PerlIO_printf(
                 DBIc_LOGPIO(imp_sth),
-                "	   bind %s - initialising new %s for cursor 0x%lx...\n",
-                phs->name, neatsvpv(sth_csr,0), (unsigned long)phs->progv);
+                "	   bind %s - initialising new %s for cursor 0x%p...\n",
+                phs->name, neatsvpv(sth_csr,0), phs->progv);
 
         {
             D_impdata(imp_sth_csr, imp_sth_t, sth_csr); /* TO_DO */
@@ -3166,6 +2866,7 @@ dbd_rebind_ph(SV *sth, imp_sth_t *imp_sth, phs_t *phs)
 {
 	dTHX;
 	/*ub2 *alen_ptr = NULL;*/
+        D_imp_dbh_from_sth;
 	sword status;
 	int done = 0;
 	int at_exec;
@@ -3256,9 +2957,9 @@ dbd_rebind_ph(SV *sth, imp_sth_t *imp_sth, phs_t *phs)
 
 	if (!csform && SvUTF8(phs->sv)) {
 		/* try to default csform to avoid translation through non-unicode */
-		if (CSFORM_IMPLIES_UTF8(SQLCS_IMPLICIT))		/* prefer IMPLICIT */
+		if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT))		/* prefer IMPLICIT */
  			csform = SQLCS_IMPLICIT;
-		else if (CSFORM_IMPLIES_UTF8(SQLCS_NCHAR))
+		else if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_NCHAR))
 			csform = SQLCS_NCHAR;	/* else leave csform == 0 */
 	if (trace_level || dbd_verbose >= 3)
 		PerlIO_printf(
@@ -3378,8 +3079,8 @@ dbd_bind_ph(SV *sth, imp_sth_t *imp_sth, SV *ph_namesv, SV *newvalue, IV sql_typ
             DBIc_LOGPIO(imp_sth), "dbd_bind_ph(1): bind %s <== %s (type %ld (%s)",
 		name, neatsvpv(newvalue,0), (long)sql_type,sql_typecode_name(sql_type));
 		if (is_inout)
-			PerlIO_printf(DBIc_LOGPIO(imp_sth), ", inout 0x%lx, maxlen %ld",
-			(long)newvalue, (long)maxlen);
+			PerlIO_printf(DBIc_LOGPIO(imp_sth), ", inout 0x%p, maxlen %ld",
+			newvalue, (long)maxlen);
 		if (attribs)
 			PerlIO_printf(DBIc_LOGPIO(imp_sth), ", attribs: %s", neatsvpv(attribs,0));
 		PerlIO_printf(DBIc_LOGPIO(imp_sth), ")\n");
@@ -3531,6 +3232,7 @@ void
 dbd_phs_sv_complete(imp_sth_t *imp_sth, phs_t *phs, SV *sv, I32 debug)
 {
 	dTHX;
+        D_imp_dbh_from_sth;
 	char *note = "";
 	/* XXX doesn't check arcode for error, caller is expected to */
 
@@ -3549,7 +3251,7 @@ dbd_phs_sv_complete(imp_sth_t *imp_sth, phs_t *phs, SV *sv, I32 debug)
 			SvCUR_set(sv, phs->alen);
 			*SvEND(sv) = '\0';
 			SvPOK_only_UTF8(sv);
-            if (CSFORM_IMPLIES_UTF8(SQLCS_IMPLICIT)) {
+            if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT)) {
 #ifdef sv_utf8_decode
                 sv_utf8_decode(sv);
 #else
@@ -3573,7 +3275,7 @@ dbd_phs_sv_complete(imp_sth_t *imp_sth, phs_t *phs, SV *sv, I32 debug)
 				SvCUR_set(sv, phs->alen);
 				*SvEND(sv) = '\0';
 				SvPOK_only_UTF8(sv);
-                if (CSFORM_IMPLIES_UTF8(SQLCS_IMPLICIT)) {
+                if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT)) {
 #ifdef sv_utf8_decode
                     sv_utf8_decode(sv);
 #else
@@ -3824,6 +3526,7 @@ do_bind_array_exec(sth, imp_sth, phs,utf8,parma_index,tuples_utf8_av,tuples_stat
 	int parma_index;
 	{
 	dTHX;
+	D_imp_dbh_from_sth;
 	sword status;
 	ub1 csform;
 	ub2 csid;
@@ -3859,9 +3562,9 @@ do_bind_array_exec(sth, imp_sth, phs,utf8,parma_index,tuples_utf8_av,tuples_stat
 
 	if (!csform && (utf8 & ARRAY_BIND_UTF8)) {
 		/* try to default csform to avoid translation through non-unicode */
-		if (CSFORM_IMPLIES_UTF8(SQLCS_IMPLICIT))				/* prefer IMPLICIT */
+		if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT))				/* prefer IMPLICIT */
 			csform = SQLCS_IMPLICIT;
-		else if (CSFORM_IMPLIES_UTF8(SQLCS_NCHAR))
+		else if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_NCHAR))
 			csform = SQLCS_NCHAR;   /* else leave csform == 0 */
 		if (trace_level || dbd_verbose >= 3 )
 			PerlIO_printf(
@@ -4249,6 +3952,7 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field, long offset, long len, 
 	dTHX;
 	ub4 retl = 0;
 	SV *bufsv;
+	D_imp_dbh_from_sth;
 	imp_fbh_t *fbh = &imp_sth->fbh[field];
 	int ftype = fbh->ftype;
 
@@ -4256,7 +3960,7 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field, long offset, long len, 
 	sv_setpvn(bufsv,"",0);	/* ensure it's writable string	*/
 
 #ifdef UTF8_SUPPORT
-	if (ftype == 112 && CS_IS_UTF8(ncharsetid) ) {
+	if (ftype == 112 && CS_IS_UTF8(imp_dbh->ncset) ) {
 	  return ora_blob_read_mb_piece(sth, imp_sth, fbh, bufsv,
 					offset, len, destoffset);
 	}
@@ -4549,6 +4253,7 @@ SV *
 dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
 {
 	dTHX;
+        D_imp_dbh_from_sth;
 	STRLEN kl;
 	char *key = SvPV(keysv,kl);
 	int i;
@@ -4580,7 +4285,7 @@ dbd_st_FETCH_attrib(SV *sth, imp_sth_t *imp_sth, SV *keysv)
 		retsv = newRV(sv_2mortal((SV*)av));
 		while(--i >= 0) {
             x = newSVpv((char*)imp_sth->fbh[i].name,0);
-            if (CSFORM_IMPLIES_UTF8(SQLCS_IMPLICIT)) {
+            if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT)) {
 #ifdef sv_utf8_decode
                 sv_utf8_decode(x);
 #else
@@ -4748,20 +4453,25 @@ dump_env_to_trace(imp_dbh_t *imp_dbh) {
 	dTHX;
 	int i = 0;
 	char *p;
+        char ** env;
 
 #if defined (__APPLE__)
 	#include <crt_externs.h>
-	#define environ (*_NSGetEnviron())
-#elif defined (__BORLANDC__)
+	env = *_NSGetEnviron();
+#else
+#if defined (__BORLANDC__)
 	extern char **environ;
+#endif
+        env = environ;
 #endif
 
 
 	PerlIO_printf(DBIc_LOGPIO(imp_dbh), "Environment variables:\n");
-	do {
-        p = (char*)environ[i++];
-        PerlIO_printf(DBIc_LOGPIO(imp_dbh),"\t%s\n",p);
-	} while ((char*)environ[i] != '\0');
+        while(env[i] != NULL)
+	{
+            p = env[i++];
+            PerlIO_printf(DBIc_LOGPIO(imp_dbh),"\t%s\n",p);
+	}
 }
 
 static void disable_taf(
@@ -4778,9 +4488,8 @@ static void disable_taf(
     return;
 }
 
-static int enable_taf(
-    SV *dbh,
-    imp_dbh_t *imp_dbh) {
+static int enable_taf( pTHX_ SV *dbh, imp_dbh_t *imp_dbh)
+{
 
     boolean can_taf = 0;
     sword status;
@@ -4790,15 +4499,14 @@ static int enable_taf(
                         OCI_ATTR_TAF_ENABLED, imp_dbh->errhp, status);
 #endif
 
-    if (!can_taf){
-        croak("You are attempting to enable TAF on a server that is not TAF Enabled \n");
-    }
+    if (!can_taf)
+        return local_error(aTHX_ dbh,
+        "You are attempting to enable TAF on a server that is not TAF Enabled");
+    
 
-	status = reg_taf_callback(dbh, imp_dbh);
-    if (status != OCI_SUCCESS) {
-        oci_error(dbh, NULL, status, "Setting TAF Callback Failed! ");
-        return 0;
-    }
+    status = reg_taf_callback(dbh, imp_dbh);
+    if (status != OCI_SUCCESS)
+        return oci_error(dbh, NULL, status, "Setting TAF Callback Failed! ");
     return 1;
 }
 

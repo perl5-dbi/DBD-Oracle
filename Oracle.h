@@ -26,7 +26,7 @@
 #endif
 
 /* egcs-1.1.2 does not have _int64 */
-#if defined(__MINGW32__) || defined(__CYGWIN32__)
+#if defined(__MINGW32__) || defined(__CYGWIN32__) || defined(__CYGWIN__)
 #define _int64 long long
 #endif
 
@@ -61,6 +61,8 @@
 void	dbd_init _((dbistate_t *dbistate));
 void	dbd_init_oci_drh _((imp_drh_t * imp_drh));
 void	dbd_dr_destroy _((SV *drh, imp_drh_t *imp_drh));
+void	dbd_dr_globals_init _(());
+void	dbd_dr_mng _(());
 
 int	 dbd_db_login  _((SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *user, char *pwd));
 int	 dbd_db_do _((SV *sv, char *statement));

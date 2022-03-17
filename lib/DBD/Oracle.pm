@@ -40,7 +40,9 @@ package DBD::Oracle;
     );
     @EXPORT_OK = qw( OCI_FETCH_NEXT OCI_FETCH_CURRENT OCI_FETCH_FIRST OCI_FETCH_LAST OCI_FETCH_PRIOR
                      OCI_FETCH_ABSOLUTE OCI_FETCH_RELATIVE ORA_OCI SQLCS_IMPLICIT SQLCS_NCHAR
-                     ora_env_var ora_cygwin_set_env );
+                     OCI_SPOOL_ATTRVAL_FORCEGET OCI_SPOOL_ATTRVAL_NOWAIT OCI_SPOOL_ATTRVAL_TIMEDWAIT
+                     OCI_SPOOL_ATTRVAL_WAIT
+                     ora_env_var ora_cygwin_set_env ora_shared_release);
 
     #unshift @EXPORT_OK, 'ora_cygwin_set_env' if $^O eq 'cygwin';
     Exporter::export_ok_tags(qw(ora_types ora_session_modes ora_fetch_orient ora_exe_modes ora_fail_over));
@@ -48,6 +50,7 @@ package DBD::Oracle;
     require_version DBI 1.623;
 
     DBD::Oracle->bootstrap($DBD::Oracle::VERSION);
+    DBD::Oracle::dr::init_globals() ;
 
     $drh = undef;        # holds driver handle once initialized
 
@@ -305,6 +308,22 @@ package DBD::Oracle;
            $attr->{ora_events} = $ENV{ORA_EVENTS};
         }
 
+        # ORA8 does not like when "user/passwd" is used.
+        # so, it makes sense to separate those. This was done
+        # in XS, but there one didn't distinguish between
+        # undef and '' as password. So, to make it backward
+        # compatible I do the same here.
+        # Ignore $user eq '/' since it is special case
+        if((!defined $auth || $auth eq '') && length($user) > 1)
+        {
+            my $idx = index($user, '/');
+            if($idx >= 0)
+            {
+                $auth = substr($user, $idx + 1);
+                $user = substr($user, 0, $idx);
+            }
+        }
+
         {
            local @SIG{ @{ $attr->{ora_connect_with_default_signals} } }
           if $attr->{ora_connect_with_default_signals};
@@ -400,7 +419,6 @@ package DBD::Oracle;
                  ora_ph_csform               => undef,
                  ora_parse_error_offset => undef,
                  ora_dbh_share               => undef,
-                 ora_envhp               => undef,
                  ora_svchp               => undef,
                  ora_errhp               => undef,
                  ora_init_mode               => undef,
@@ -1572,12 +1590,26 @@ For Oracle 11.2 or greater.
 
 Set to I<1> to enable DRCP. Can also be set via the C<ORA_DRCP> environment variable.
 
+Note, this really enables Session pools on Client side. Each pool is identified
+by DB, user, charsets and pool mode. The latter one can be affected by
+B<ora_events>. Sessions are kept open after disconnect, so next connect may
+pick up session that was previously used. That means that any "alter session"
+changes can be still in effect. One may use B<ora_drcp_tag> to mark such sessions.
+
+Of course this allows saving resources and speeding up connecting. This also works
+across thread-boundaries, unlike connect_cached. So, if there are multiple threads
+that constantly connect and disconnect, then this option is the best solution.
+It may even work in situations of single thread where libraries have to obtain connection
+only for short operation and then release it.
+
+The feature can be combined with actual configuring of DRCP on the Server side.
+Then connecting to ':pooled' DNS shall also optimize use of resources on the Server
+side, since this enables sharing of server sessions between client sessions.
+
 =head4 ora_drcp_class
 
 If you are using DRCP, you can set a CONNECTION_CLASS for your pools
-as well.  As sessions from a DRCP cannot be shared by users, you can
-use this setting to identify the same user across different
-applications. OCI will ensure that sessions belonging to a 'class' are
+as well. OCI will ensure that connections belonging to a 'class' are
 not shared outside the class'.
 
 The values for ora_drcp_class cannot contain a '*' and must be less
@@ -1587,7 +1619,7 @@ This value can be also be specified with the C<ORA_DRCP_CLASS>
 environment variable.
 
 Note that a connection class must be specified in order to enable
-inter-process sharing of server side sessions.
+inter-process sharing of Server side sessions (:pooled connections)
 
 =head4 ora_drcp_min
 
@@ -1629,6 +1661,23 @@ greater than ora_drcp_max.
 
 This value can also be specified with the C<ORA_DRCP_INCR> environment
 variable.
+
+=head4 ora_drcp_mode
+
+By default, when count of open session reaches ora_drcp_max, the call to
+connect shall block untill some session becomes free. One can change it
+by setting this attribute to one of OCI_SPOOL_ATTRVAL_NOWAIT,
+OCI_SPOOL_ATTRVAL_FORCEGET, OCI_SPOOL_ATTRVAL_TIMEDWAIT. The latter one
+needs time in milliseconds, which is passed using attribute ora_drcp_wait.
+Default value is OCI_SPOOL_ATTRVAL_WAIT. These contants can be imported
+from DBD::Oracle.
+
+=head4 ora_drcp_tag
+
+This is similar to ora_drcp_class, but it is not so strict. If session
+with given tag does not exist, then another session is returned, One can
+check tag of that session after connection. The tag can be changed by changing
+this attribute. But change happens only at "disconnect".
 
 =head4 ora_drcp_rlb
 
@@ -1792,10 +1841,17 @@ initialized to an empty string.
 
   $dbh = DBI->connect ($dsn, $user, $passwd, {ora_dbh_share => \$orashr}) ;
 
-With ithreads DBD::Oracle will leak handles, because it can't tell
-when the last driver handle is destroyed.
+After shared connection is not needed any more, one should call
 
-Please keep in mind, that ithreads are officially discouraged.
+  DBD::Oracle::ora_shared_release($orashr);
+
+This shall close shared connection. The function can be imported into
+current namespace (use DBD::Oracle qw/ora_shared_release/)
+
+Please keep in mind, this functionality is rather dangerous. One should not
+use single connection in multiple threads at the same time, since access to server
+is not atomic. There can be problems with transactions or fetching of rows.
+It is much better to use sessions-pooling activated with B<ora_drcp>.
 
 =head4 ora_events
 
@@ -1803,32 +1859,10 @@ Set this attribute to C<1> to enable Oracle Fast Application Notification
 (FAN) in a new OCI environment. Can also be set via the C<ORA_EVENTS>
 environment variable.
 
-=head4 ora_envhp
-
-The first time a connection is made a new OCI 'environment' is
-created by DBD::Oracle and stored in the driver handle.
-Subsequent connects reuse (share) that same OCI environment
-by default.
-
-The ora_envhp attribute can be used to disable the reuse of the OCI
-environment from a previous connect. If the value is C<0> then
-a new OCI environment is allocated and used for this connection.
-
-The OCI environment holds information about the client side context,
-such as the local NLS environment. By altering C<%ENV> and setting
-ora_envhp to 0 you can create connections with different NLS
-settings. This is most useful for testing.
-
-Note that for DRCP, setting C<ora_envhp = 0> has no effect. Here,
-a new session pool is created, using the current NLS environment,
-for each new combination of dbname, uid/pwd, connection class,
-and charset/ncharset.
-
 =head4 ora_charset, ora_ncharset
 
 For oracle versions >= 9.2 you can specify the client charset and
-ncharset with the ora_charset and ora_ncharset attributes.  You
-still need to pass C<ora_envhp = 0> for all but the first connect.
+ncharset with the ora_charset and ora_ncharset attributes.
 
 These attributes override the settings from environment variables.
 
