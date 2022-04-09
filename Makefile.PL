@@ -874,7 +874,7 @@ if ($^O eq 'aix' and $osvers >= 4 and $Config{cc} ne 'xlc_r') {
     sleep 5;
 }
 
-if ($Config{archname} !~ /-thread\b/i) {
+if ($Config{archname} !~ /-threads?\b/i) {
     print "\n";
     print "WARNING: If you have problems you may need to rebuild perl with threading enabled.$BELL\n";
     sleep 5;
@@ -887,7 +887,7 @@ if ($Config{usemymalloc} eq 'y') {
 }
 
 print "WARNING: Your GNU C compiler is very old. Please upgrade.\n"
-    if ($Config{gccversion} and $Config{gccversion} =~ m/^(1|2\.[1-5])/);
+    if ($Config{gccversion} and $Config{gccversion} =~ m/^(1\.|2\.[1-5])/);
 
 if ($opts{LINKTYPE} && $opts{LINKTYPE} eq 'static') {
     print "** Note: DBD::Oracle will be built *into* a NEW perl binary. You MUST use that new perl.\n";
@@ -1789,8 +1789,8 @@ sub symbol_search {
 
         eval { # This chunk is for Oracle::OCI
             require Data::Dumper;
-            print main::MK_PM Data::Dumper->Purity(1)->Terse(0)->Indent(1)->Useqq(1)
-                ->Dump([\%opts, $self], [qw(dbd_oracle_mm_opts dbd_oracle_mm_self)]);
+            my $dmp = Data::Dumper->new([\%opts, $self], [qw(dbd_oracle_mm_opts dbd_oracle_mm_self)]);
+            print main::MK_PM $dmp->Purity(1)->Terse(0)->Indent(1)->Useqq(1)->Dump;
         };
         if ($@) {
             warn "Can't dump config to mk.pm so you won't be able to build Oracle::OCI later if you wanted to: $@\n";

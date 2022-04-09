@@ -945,9 +945,11 @@ dbd_db_STORE_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv, SV *valuesv)
 	else if (kl==13 && strEQ(key, "ora_drcp_mode") ) {
 		cnx_pool_mode(aTHX_ dbh, imp_dbh, (ub4)SvIV(valuesv));
 	}
+#if OCI_MAJOR_VERSION > 18
 	else if (kl==13 && strEQ(key, "ora_drcp_wait") ) {
 		cnx_pool_wait(aTHX_ dbh, imp_dbh, (ub4)SvIV(valuesv));
 	}
+#endif
 	else if (kl==12 && strEQ(key, "ora_drcp_max") ) {
 		cnx_pool_max(aTHX_ dbh, imp_dbh, (ub4)SvIV(valuesv));
 	}
@@ -1115,9 +1117,11 @@ dbd_db_FETCH_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv)
 	else if (kl==13 && strEQ(key, "ora_drcp_mode") ) {
 		retsv = newSViv(cnx_get_pool_mode(aTHX_ dbh, imp_dbh));
 	}
+#if OCI_MAJOR_VERSION > 18
 	else if (kl==13 && strEQ(key, "ora_drcp_wait") ) {
 		retsv = newSViv(cnx_get_pool_wait(aTHX_ dbh, imp_dbh));
 	}
+#endif
 	else if (kl==12 && strEQ(key, "ora_drcp_max") ) {
 		retsv = newSViv(cnx_get_pool_max(aTHX_ dbh, imp_dbh));
 	}

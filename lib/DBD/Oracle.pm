@@ -1256,6 +1256,10 @@ SQL
 
 __END__
 
+=head1 NAME
+
+DBD::Oracle - Perl module for accessing Oracle
+
 
 =head1 SYNOPSIS
 
@@ -1670,7 +1674,11 @@ by setting this attribute to one of OCI_SPOOL_ATTRVAL_NOWAIT,
 OCI_SPOOL_ATTRVAL_FORCEGET, OCI_SPOOL_ATTRVAL_TIMEDWAIT. The latter one
 needs time in milliseconds, which is passed using attribute ora_drcp_wait.
 Default value is OCI_SPOOL_ATTRVAL_WAIT. These contants can be imported
-from DBD::Oracle.
+from DBD::Oracle. Important, functionality with OCI_SPOOL_ATTRVAL_TIMEDWAIT
+and OCI_SPOOL_ATTRVAL_NOWAIT was added by Oracle somewhere after version
+12, so to make it safe, DBD::Oracle supports it when compiled against
+OCI with Version > 18
+
 
 =head4 ora_drcp_tag
 

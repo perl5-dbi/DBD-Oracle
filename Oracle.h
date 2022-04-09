@@ -118,6 +118,13 @@ ub4	 ora_blob_read_mb_piece _((SV *sth, imp_sth_t *imp_sth, imp_fbh_t *fbh, SV *
 #define ORA_XMLTYPE			108
 
 
+/* define some constants from newer OCI versions */
+#ifndef OCI_SPOOL_ATTRVAL_TIMEDWAIT
+#define OCI_SPOOL_ATTRVAL_TIMEDWAIT 3
+#endif
+#ifndef OCI_SPOOL_ATTRVAL_NOWAIT
+#define OCI_SPOOL_ATTRVAL_NOWAIT 1
+#endif
 
 
 /* other Oracle not in noraml API defines

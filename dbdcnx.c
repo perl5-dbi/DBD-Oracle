@@ -528,6 +528,7 @@ cnx_pool_mode(pTHX_ SV * dbh, imp_dbh_t * imp_dbh, ub4 val)
         (void)oci_error(dbh, box->errhp, status, "OCIAttrSet POOL_GETMODE");
 }/*}}}*/
 /*cnx_pool_wait{{{*/
+#if OCI_MAJOR_VERSION > 18
 void
 cnx_pool_wait(pTHX_ SV * dbh, imp_dbh_t * imp_dbh, ub4 val)
 {
@@ -542,7 +543,9 @@ cnx_pool_wait(pTHX_ SV * dbh, imp_dbh_t * imp_dbh, ub4 val)
     );
     if(status != OCI_SUCCESS)
         (void)oci_error(dbh, box->errhp, status, "OCIAttrSet POOL_WAIT_TIMEOUT");
-}/*}}}*/
+}
+#endif
+/*}}}*/
 /*cnx_is_pooled_session{{{*/
 int
 cnx_is_pooled_session(pTHX_ SV *dbh, imp_dbh_t * imp_dbh)
@@ -568,6 +571,7 @@ cnx_get_pool_mode(pTHX_ SV *dbh, imp_dbh_t * imp_dbh)
     return 0;
 }/*}}}*/
 /*cnx_get_pool_wait{{{*/
+#if OCI_MAJOR_VERSION > 18
 int
 cnx_get_pool_wait(pTHX_ SV *dbh, imp_dbh_t * imp_dbh)
 {
@@ -584,7 +588,9 @@ cnx_get_pool_wait(pTHX_ SV *dbh, imp_dbh_t * imp_dbh)
     if(status == OCI_SUCCESS) return (int)v;
     (void)oci_error(dbh, box->errhp, status, "OCIAttrGet POOL_WAIT_TIMEOUT");
     return 0;
-}/*}}}*/
+}
+#endif
+/*}}}*/
 /*cnx_get_pool_used{{{*/
 int
 cnx_get_pool_used(pTHX_ SV *dbh, imp_dbh_t * imp_dbh)

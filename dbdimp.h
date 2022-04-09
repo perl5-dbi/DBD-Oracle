@@ -409,8 +409,10 @@ void ora_shared_release(pTHX_ SV * );
 int cnx_get_pool_mode(pTHX_ SV *, imp_dbh_t * );
 void cnx_pool_mode(pTHX_ SV * , imp_dbh_t * , ub4);
 
+#if OCI_MAJOR_VERSION > 18
 int cnx_get_pool_wait(pTHX_ SV *, imp_dbh_t * );
 void cnx_pool_wait(pTHX_ SV * , imp_dbh_t * , ub4);
+#endif
 
 int cnx_get_pool_used(pTHX_ SV *, imp_dbh_t * );
 
