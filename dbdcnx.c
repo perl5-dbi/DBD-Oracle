@@ -761,6 +761,7 @@ new_pool_box(pTHX_ pool_box_t ** slot, dblogin_info_t * ctrl)
             OCIHandleFree(poolhp, OCI_HTYPE_SPOOL);
             return FALSE;
         }
+        OCIHandleFree(authp, OCI_HTYPE_AUTHINFO);
     }
 #endif
 
