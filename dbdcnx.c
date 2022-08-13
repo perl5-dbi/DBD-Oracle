@@ -67,62 +67,37 @@ struct llist_t{
     llist_t * right;
 };
 
-PERL_STATIC_INLINE int
-llist_empty(const llist_t * list)
-{
-    return list->left == list;
-}
+#define llist_empty(list) ((list)->left == (list))
 
-PERL_STATIC_INLINE void
-llist_init(llist_t *list)
-{
-    list->right = list->left = list;
-}
+#define llist_init(lst) do{\
+    llist_t * list = lst;\
+    list->right = list->left = list;\
+}while(0)
 
-PERL_STATIC_INLINE void
-llist_add(llist_t * left, llist_t * right)
-{
-    llist_t * old;
+#define llist_add(aleft, aright) do{\
+    llist_t * old;\
+    llist_t * left = aleft;\
+    llist_t * right = aright;\
+    old = left->right;\
+    left->right = right;\
+    old->left = right->left;\
+    right->left = left;\
+    old->left->right = old;\
+}while(0)
 
-    // first save the pointer from the left->rigth
-    old = left->right;
-
-    // now left->right shall point to right
-    left->right = right;
-
-    // now the old left pointer shall point to what the
-    // new right->left was pointing
-    old->left = right->left;
-
-    // now right->left shall contain the left
-    right->left = left;
-
-    // finally
-    old->left->right = old;
-}
-
-PERL_STATIC_INLINE void
-llist_drop(llist_t * el)
-{
-    if(llist_empty(el)) return;
-    el->left->right = el->right;
-    el->right->left = el->left;
-    llist_init(el);
-}
+#define llist_drop(ael) do{\
+    llist_t * el = ael;\
+    if(llist_empty(el)) return;\
+    el->left->right = el->right;\
+    el->right->left = el->left;\
+    llist_init(el);\
+}while(0)
 
 // this is pointer to the left element in chain
-PERL_STATIC_INLINE llist_t *
-llist_left(const llist_t * list)
-{
-    return list->left;
-}
+#define llist_left(list) (list)->left
 
 // this one is a pointer to the right element in chain
-PERL_STATIC_INLINE llist_t *
-llist_right(const llist_t *list)
-{
-    return list->right;
-}
+#define llist_right(list) (list)->right
 /* }}} */
 
 #if defined(USE_ITHREADS)
