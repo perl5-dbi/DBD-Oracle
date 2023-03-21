@@ -60,15 +60,6 @@ my %opts = (
        build_requires => {"DBI" => '1.623',
                           "ExtUtils::MakeMaker" => 0,
                           "Test::Simple" => '0.90'},
-       resources => {
-           bugtracker => { web => 'https://github.com/perl5-dbi/DBD-Oracle/issues'},
-           homepage => 'https://metacpan.org/pod/DBD::Oracle',
-           repository => {
-               type => 'git',
-               url => 'git://github.com/perl5-dbi/DBD-Oracle.git',
-               web => 'http://github.com/perl5-dbi/DBD-Oracle',
-           },
-       },
     },
 );
 my $eumm = $ExtUtils::MakeMaker::VERSION;
