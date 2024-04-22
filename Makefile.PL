@@ -1115,14 +1115,15 @@ sub perl_is_64bit {
     return defined $Config{use64bitall} ;
 }
 sub ora_libdir {
-    my $libdir = 'lib' ;
+    my $libdir = 'lib';
     if ( $client_version >= 9 ) {
         $libdir = 'lib32' if ! perl_is_64bit() and -d "$OH/lib32";
+        $libdir = 'lib64' if perl_is_64bit() and -d "$OH/lib64";
+        # Solaris OIC 12+ from pkg
         $libdir = 'lib/64' if perl_is_64bit() and -d "$OH/lib/64";
-           # Solaris OIC 12+ from pkg
     }
     else {
-        $libdir = 'lib64' if   perl_is_64bit() and -d "$OH/lib64";
+        $libdir = 'lib64' if perl_is_64bit() and -d "$OH/lib64";
     }
 
     return $libdir;
