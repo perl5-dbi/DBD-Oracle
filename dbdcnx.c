@@ -87,10 +87,11 @@ struct llist_t{
 
 #define llist_drop(ael) do{\
     llist_t * el = ael;\
-    if(llist_empty(el)) return;\
-    el->left->right = el->right;\
-    el->right->left = el->left;\
-    llist_init(el);\
+    if(!llist_empty(el)) {\
+        el->left->right = el->right;\
+        el->right->left = el->left;\
+        llist_init(el);\
+    } \
 }while(0)
 
 // this is pointer to the left element in chain
