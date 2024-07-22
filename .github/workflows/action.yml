@@ -50,5 +50,6 @@ jobs:
       - run: sudo -E maint/scripts/03_install_oracle_instantclient_rpm.bash
       - run: . /etc/profile
       - run: perl -V
-      - run: cpanm DBI Test::NoWarnings
+      - run: cpanm DBI # DBI must be installed before we can build a DBD.
+      - run: cpanm --installdeps .
       - run: perl Makefile.PL && make && make test
