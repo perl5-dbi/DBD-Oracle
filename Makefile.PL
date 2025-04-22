@@ -374,7 +374,7 @@ elsif (($^O eq 'MSWin32') or ($^O =~ /cygwin/i)) {
 # --- UNIX Variants ---
 
 elsif ($::opt_l || !defined $mkfile and # use -l to enable this direct-link approach
-        @_=grep { m:/lib(cl(ie)?ntsh|oracle).\w+$:o } <$OH/lib/lib*>
+        @_=grep { m:/lib(cl(ie)?ntsh|oracle).\w+$:o } <$OH/lib{,64}/lib*>
     ) {
     # --- the simple modern way ---
     foreach(@_) { s:\Q$OH/lib/::g }
