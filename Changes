@@ -2,7 +2,10 @@ Revision history for DBD::Oracle
 
 {{$NEXT}}
 
-  Specify resources metadata explicitly in dist.ini (HG#162, Graham Knop)
+  Makefile.PL fix for missing Test::NoWarnings build requirement (GH#175, Wesley Hinds)
+  don't care about ExtUtils::MakeMaker version number anymore (GH#184, Wesley Hinds)
+  Makefile.PL: help to find linking libraries on Gentoo (GH#184, Marco Genasci)
+  Specify resources metadata explicitly in dist.ini (GH#162, Graham Knop)
   Ensure dbivport.h is installed- (GH#150, Wesley Hinds)
   Add DBI to ConfigureRequires, BuildRequires, and Test Requires - (GH#155)
   Move from TravisCI to Github Actions (GHA) - (PR#152, Wesley Hinds)
