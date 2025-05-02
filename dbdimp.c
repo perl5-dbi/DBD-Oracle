@@ -767,7 +767,6 @@ int dbd_st_bind_col(SV *sth, imp_sth_t *imp_sth, SV *col, SV *ref, IV type, SV *
         imp_sth->fbh[field-1].bind_flags = 0; /* default to none */
     }
 
-#if DBIXS_REVISION >= 13590
 	/* DBIXS 13590 added StrictlyTyped and DiscardString attributes */
 	if (attribs) {
 		HV *attr_hash;
@@ -791,7 +790,6 @@ int dbd_st_bind_col(SV *sth, imp_sth_t *imp_sth, SV *col, SV *ref, IV type, SV *
 			imp_sth->fbh[field-1].bind_flags |= DBIstcf_DISCARD_STRING;
 		}
 	}
-#endif  /* DBIXS_REVISION >= 13590 */
 	return 1;
 }
 
