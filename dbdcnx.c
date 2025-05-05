@@ -53,11 +53,12 @@
  * Now, how long shall be cached all handles? As long
  * as there are users. Each open connection is a user.
  * Additionally every "driver"-object is a user.
- * The drivier-object is allocated in each thread
+ * The driver-object is allocated in each thread
  * that tries to connect to DB and is released when
  * thread ends.
  }}} */
 #include "Oracle.h"
+
 DBISTATE_DECLARE;
 
 typedef struct llist_t llist_t;
@@ -312,7 +313,7 @@ simple_connect(pTHX_ dblogin_info_t * ctrl)
     sword status;
     ub4 ulen, plen, ctype;
 
-    tracer(imp_dbh, 3, 3, "using OCIEnv %p to connect\n", imp_dbh->envhp);
+    tracer(imp_dbh, 3, 3, "using OCIEnv envhp:%p to connect\n", imp_dbh->envhp);
 
     OCIHandleAlloc_ok(
             imp_dbh, imp_dbh->envhp, &imp_dbh->errhp,
@@ -896,7 +897,7 @@ int cnx_establish
 (pTHX_ dblogin_info_t * ctrl)
 {
     imp_dbh_t * imp_dbh = ctrl->imp_dbh;
-    env_box_t * env_box;
+    env_box_t * env_box = NULL;
 
     if(!figure_out_charsets(aTHX_ ctrl)) return FALSE;
     /* try to find existing OCIEnv */
@@ -1011,10 +1012,12 @@ cnx_detach(pTHX_ imp_dbh_t * imp_dbh)
     }
     else {
 #endif
-        (void)OCISessionEnd(
-                imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, OCI_DEFAULT
-        );
-        (void)OCIServerDetach(imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT);
+
+        sword status = OCI_SUCCESS;
+
+        OCISessionEnd_log_stat( imp_dbh, imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, OCI_DEFAULT, status );
+        OCIServerDetach_log_stat( imp_dbh, imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT, status );
+
 #ifdef ORA_OCI_112
     }
 #endif

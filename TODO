@@ -24,7 +24,8 @@ For release 1.22 or later
 
 add support for $dbh->trace('SQL');
 
-Replace OCIInitialize + OCIEnvInit, with OCIEnvCreate
+--> done 1.76(or earlier) Replace OCIInitialize + OCIEnvInit, with OCIEnvNlsCreate
+   (found this way in 1.90 during review of SEGV investigation, seen it in as early as 1.76)
 
 --> done 1.22 dbd_verbose ora_verbose Add in the DBD only debugging flag
 

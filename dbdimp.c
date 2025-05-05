@@ -179,7 +179,7 @@ ora_env_var(char *name, char *buf, unsigned long size)
 #define WIN32_REG_BUFSIZE 80
 	dTHX;
 	char last_home_id[WIN32_REG_BUFSIZE+1];
-	char ora_home_key[WIN32_REG_BUFSIZE+1];
+	char ora_home_key[WIN32_REG_BUFSIZE*2+1];
 	unsigned long len = WIN32_REG_BUFSIZE;
 	char *e = getenv(name);
 	if (e)
@@ -264,7 +264,7 @@ dbd_discon_all(SV *drh, imp_drh_t *imp_drh)
 	dTHR;
 	dTHX;
 
-    /* The disconnect_all concept is flawed and needs more work */
+	/* The disconnect_all concept is flawed and needs more work */
 	if (!PL_dirty && !SvTRUE(perl_get_sv("DBI::PERL_ENDING",0))) {
         DBIh_SET_ERR_CHAR(drh, (imp_xxh_t*)imp_drh, Nullch, 1, "disconnect_all not implemented", Nullch, Nullch);
         return FALSE;
@@ -453,7 +453,7 @@ activate_dbh(pTHX_ dblogin_info_t * ctrl)
     imp_dbh->ph_csform = 0;	/* meaning auto (see dbd_rebind_ph)	*/
 
     if (DBIc_DBISTATE(imp_dbh)->debug >= 3 || dbd_verbose >= 3 ) {
-	sword status;
+        sword status;
         oratext  charsetname[OCI_NLS_MAXBUFSZ];
         oratext  ncharsetname[OCI_NLS_MAXBUFSZ];
         ub2 charsetid_l		= 0;
@@ -495,15 +495,16 @@ dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, S
 #endif
 
 	/* check to see if DBD_verbose or ora_verbose is set*/
-        DBD_ATTRIB_GET_IV(  attr, "dbd_verbose",  11, svp, dbd_verbose);
-        DBD_ATTRIB_GET_IV(  attr, "ora_verbose",  11, svp, dbd_verbose);
+	DBD_ATTRIB_GET_IV(  attr, "dbd_verbose",  11, svp, dbd_verbose);
+	DBD_ATTRIB_GET_IV(  attr, "ora_verbose",  11, svp, dbd_verbose);
 
-	if (DBIc_DBISTATE(imp_dbh)->debug >= 6 || dbd_verbose >= 6 )
+	// Noise (TMI)
+	if (DBIc_DBISTATE(imp_dbh)->debug >= 8 || dbd_verbose >= 8 )
 		dump_env_to_trace(imp_dbh);
 
 	/* dbi_imp_data code adapted from DBD::mysql */
 	if (DBIc_has(imp_dbh, DBIcf_IMPSET))
-        {
+	{
             /* dbi_imp_data from take_imp_data */
             if (DBIc_has(imp_dbh, DBIcf_ACTIVE))
             {
@@ -516,15 +517,15 @@ dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, S
             tracer(2, 3, "dbd_db_login6 IMPSET but not ACTIVE\n");
 	}
 
-        ctrl.mode = OCI_OBJECT;/* needed for LOBs (8.0.4)	*/
-        if (DBD_ATTRIB_TRUE(attr, "ora_events", 10, svp))
-        {
-            ctrl.mode |= OCI_EVENTS;
-            /* Needed for Oracle Fast Application Notification (FAN). */
-        }
+	ctrl.mode = OCI_OBJECT;/* needed for LOBs (8.0.4)	*/
+	if (DBD_ATTRIB_TRUE(attr, "ora_events", 10, svp))
+	{
+		ctrl.mode |= OCI_EVENTS;
+		/* Needed for Oracle Fast Application Notification (FAN). */
+	}
 
-        /* Undocumented, this overrides all previous settings */
-        DBD_ATTRIB_GET_IV(attr, "ora_init_mode",13, svp, ctrl.mode);
+	/* Undocumented, this overrides all previous settings */
+	DBD_ATTRIB_GET_IV(attr, "ora_init_mode",13, svp, ctrl.mode);
 
 #if defined(USE_ITHREADS) || defined(MULTIPLICITY) || defined(USE_5005THREADS)
         ctrl.mode |= OCI_THREADED;
@@ -544,7 +545,7 @@ dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, S
         }
 
 	/* some connection pool attributes  */
-        if(ctrl.pool_max)
+	if(ctrl.pool_max)
         {
             svp = DBD_ATTRIB_GET_SVP(attr, "ora_drcp_min",12);
             if (svp != NULL)
@@ -600,7 +601,7 @@ dbd_db_login6(SV *dbh, imp_dbh_t *imp_dbh, char *dbname, char *uid, char *pwd, S
 #endif
     /* TAF Events shall be processed from STORE*/
 
-        imp_dbh->server_version = 0;
+	imp_dbh->server_version = 0;
 	imp_dbh->get_oci_handle = oci_db_handle;
 
 #if defined(USE_ITHREADS) && defined(PERL_MAGIC_shared_scalar)
@@ -820,7 +821,7 @@ dbd_db_disconnect(SV *dbh, imp_dbh_t *imp_dbh)
             return TRUE;
         }
 #endif
-        cnx_detach(aTHX_ imp_dbh);
+	cnx_detach(aTHX_ imp_dbh);
 
 	/* We don't free imp_dbh since a reference still exists	*/
 	/* The DESTROY method is the only one to 'free' memory.	*/
@@ -849,7 +850,7 @@ dbd_db_destroy(SV *dbh, imp_dbh_t *imp_dbh)
         /* on shared cnx only decrement reference count */
         if(imp_dbh->is_shared != 0) return;
 #endif
-        tracer(3, 3, "clearing session %p\n", imp_dbh->seshp);
+        tracer(3, 3, "clearing session 0x%p\n", imp_dbh->seshp);
         cnx_clean(aTHX_ imp_dbh);
 }
 
