@@ -41,6 +41,10 @@ dbd_init_oci(dbistate_t *dbistate)
 {
 	dTHX;
 	DBIS = dbistate;
+	// Use Perl's IO to print debug messages that this function has been called
+	// and announce the thread (tid) using STDERR.
+	// tracer(DBIS, 3, 3, "# dbd_init_oci() called by thread %ld\n", (long)PERL_GET_THX);
+	// PerlIO_printf(PerlIO_stderr(), "# dbd_init_oci called by thread %ld\n", (long)PERL_GET_THX);
 }
 
 void
@@ -157,7 +161,7 @@ sql_typecode_name(int dbtype) {
 		case 97:	return "CHARZ";
 		case 100:	return "BINARY FLOAT oracle-endian";
 		case 101:	return "BINARY DOUBLE oracle-endian";
-                case 104:       return "ROWID";
+		case 104:	return "ROWID";
 		case 106:	return "MLSLABEL";
 		case 102:	return "SQLT_CUR	OCI 7 cursor variable";
 		case 112:	return "SQLT_CLOB / long";
