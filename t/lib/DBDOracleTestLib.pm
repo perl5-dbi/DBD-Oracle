@@ -192,7 +192,7 @@ sub db_handle {
 
     my $dsn    = oracle_test_dsn();
     my $dbuser = $ENV{ORACLE_USERID} || 'scott/tiger';
-    my $dbh    = DBI->connect( $dsn, $dbuser, '', $p );
+    my $dbh    = DBI->connect( $dsn, $dbuser, 'WOOPS', $p );
     return $dbh
 
 }
@@ -230,7 +230,7 @@ sub force_drop_table {
     my $tname = shift || table();
     local $dbh->{PrintError} = 0;
     if ($dbh->{Active}) {
-        $dbh->do(qq{ drop table $tname })
+        $dbh->do(qq{ DROP TABLE $tname PURGE })
     }
 }
 
@@ -417,10 +417,10 @@ sub create_table {
 
     drop_table($dbh) if $drop;
 
-    #$dbh->do(qq{ drop table $table }) if $drop;
+    #$dbh->do(qq{ DROP TABLE $table PURGE }) if $drop;
     $dbh->do($sql);
     if ( $dbh->err && $dbh->err == 955 ) {
-        $dbh->do(qq{ drop table $table });
+        $dbh->do(qq{ DROP TABLE $table PURGE });
         warn "Unexpectedly had to drop old test table '$table'\n"
           unless $dbh->err;
         $dbh->do($sql);

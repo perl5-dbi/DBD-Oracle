@@ -101,8 +101,8 @@ sub drop_table
     eval {
         local $dbh->{PrintError} = 0;
         local $dbh->{PrintWarn} = 0;
-        $dbh->do(qq/drop table $table/);
-        $dbh->do(qq/drop table $table2/);
+        $dbh->do(qq/DROP TABLE $table PURGE/);
+        $dbh->do(qq/DROP TABLE $table2 PURGE/);
     };
     note("Table dropped");
 }
