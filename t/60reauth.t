@@ -27,7 +27,7 @@ if ( $uid1 eq $uid2 ) {
 }
 
 my $dsn = oracle_test_dsn();
-my $dbh = DBI->connect( $dsn, $dbuser, '' );
+my $dbh = DBI->connect( $dsn, $dbuser, 'WOOPS' );
 
 if ($dbh) {
     plan tests => 3;
@@ -37,5 +37,5 @@ else {
 }
 
 is( ( $dbh->selectrow_array('SELECT USER FROM DUAL') )[0], $uid1, 'uid1' );
-ok( $dbh->func( $dbuser_2, '', 'reauthenticate' ), 'reauthenticate' );
+ok( $dbh->func( $dbuser_2, 'WOOPS', 'reauthenticate' ), 'reauthenticate' );
 is( ( $dbh->selectrow_array('SELECT USER FROM DUAL') )[0], $uid2, 'uid2' );
