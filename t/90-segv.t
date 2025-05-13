@@ -16,7 +16,10 @@ use IPC::Open2 ();
 local $Data::Dumper::Indent = 1;
 local $Data::Dumper::Terse  = 1;
 
+$ENV{DBD_ORACLE_DUMP} = 0;
+
 our $VERSION      = 0.1;
+our $VERBOSE      = 0;
 our $ORACLE_HOME  = $ENV{ORACLE_HOME};
 our $TNS_ADMIN    = $ENV{TNS_ADMIN};
 our $ORA_SOURCE   = $ENV{DBI_DSN} || 'dbi:Oracle';
@@ -75,11 +78,13 @@ PERL_NOTICE:
   ok    $perl_path, $perl_path;
   ok -x $perl_path, "-x $perl_path";
 
-  note qx|perl -V|;
+  note qx|perl -V|  if $VERBOSE;
 }
 
 THREADS_ALONE:
 {
+  last THREADS_ALONE if 1;
+
   section 'Threads stress testing';
 
 # is threads->tid,  0,  'main-thread identified';
@@ -110,10 +115,11 @@ THREADS_SEGV:
   section 'Threads + DB->ping stress testing';
 
   my $onemore;    ## to be the last but used only once
-  my $do_onemore = 0;
+  my $do_onemore = 1;
+  my $do_first   = 0; ## 1 = OKAY; 0 = SEGV
 
   ## <= 2 OKAY; > 2 SEGV!!! unless one $do_onemore is enabled to control disconnect order
-  my $size = 3;
+  my $size = 3 - $do_onemore;
 
   sub finish_onemore
   {
@@ -126,6 +132,8 @@ THREADS_SEGV:
     # threads->yield;
     # note 'SNEEK IN ANOTHER (END)';
     # usleep 200000;
+
+      local $ENV{DBD_ORACLE_DUMP} = 1;
 
       note 'EXIT THE-ONE-MORE thread';
     # DBI->trace(6);
@@ -143,8 +151,7 @@ THREADS_SEGV:
 
   for my $loop ( 1 .. 3 )
   {
-    note "START LOOP $loop";
-  # sleep 4;
+    note "START LOOP $loop" if $VERBOSE;
 
     {
       my $queue = DB::Queue->new;
@@ -186,14 +193,14 @@ THREADS_SEGV:
     # # sleep 4;
     # }
 
-      note "  END LOOP $loop";
+      note "  END LOOP $loop" if $VERBOSE;
     # sleep 4;
     # note 'Manual Disable: ', $queue->disable;
-      finish_onemore;
+      finish_onemore if $do_first;
     }
 
     ok( DB::Queue->new->isDisabled,  '  q->isDisabled (auto-cleanup DESTROY)' );
-    note qx/ps -o rss,size,pid,cmd -p $$/;
+    note qx/ps -o rss,size,pid,cmd -p $$/ if $VERBOSE;
   }
 
   finish_onemore;
@@ -217,6 +224,7 @@ use Test::More;
 use Data::Dumper;
 
 our $VERSION;
+our $VERBOSE;
 our $ENABLED;
 our $TCOUNT;
 our $QUEUE_IN;
@@ -228,6 +236,7 @@ our $ONETHR :shared;
 
 BEGIN {
   $VERSION  = 0.1;
+  $VERBOSE  = $main::VERBOSE || 0;
   $ONETHR   = 1;
   $ENABLED  = 0;
   $QUEUE_IN = [];
@@ -235,7 +244,7 @@ BEGIN {
   $STATUS   = {};
   $THREADS  = [];
 
-# DBI->trace(3);
+# DBI->trace(9);
 }
 
 sub CLONE {
@@ -282,7 +291,7 @@ sub disable
       if ( $thr )
       {
         while ( ! $thr->is_joinable ) { usleep( 20000 ); }
-        note 'join ', $thr->tid;
+        note 'join ', $thr->tid if $VERBOSE;
         $thr->join;
       }
 
@@ -413,9 +422,9 @@ QUEUE_BACKEND:
     if ( ! $dbh )
     {
       lock $ONETHR;
-      printf "# CONNECT-ENTER %d\n", $tid;
+      printf "# CONNECT-ENTER %d\n", $tid if $VERBOSE;
       $dbh = DBI->connect( $main::ORA_SOURCE, $main::ORA_SCHEMA, $main::ORA_PASSWD );
-      printf "# CONNECT-EXIT  %d\n", $tid;
+      printf "# CONNECT-EXIT  %d\n", $tid if $VERBOSE;
     # threads->yield;
     # usleep 250000;
     }
@@ -430,10 +439,10 @@ QUEUE_BACKEND:
     if ( $dbh )
     {
       lock $ONETHR;
-      printf "# DISCONNECT-ENTER %d\n", $tid;
+      printf "# DISCONNECT-ENTER %d\n", $tid  if $VERBOSE;
       $dbh->disconnect;
       $dbh = undef;
-      printf "# DISCONNECT-EXIT  %d\n", $tid;
+      printf "# DISCONNECT-EXIT  %d\n", $tid  if $VERBOSE;
     # threads->yield;
     # usleep 250000;
     }

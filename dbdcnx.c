@@ -63,7 +63,7 @@ DBISTATE_DECLARE;
 
 typedef struct llist_t llist_t;
 /* small implementation for doubly-linked list {{{ */
-struct llist_t{
+struct llist_t {
     llist_t * left;
     llist_t * right;
 };
@@ -74,6 +74,8 @@ struct llist_t{
     llist_t * list = lst;\
     list->right = list->left = list;\
 }while(0)
+
+#define llist_is_initialized(list) ((list)->left != NULL)
 
 #define llist_add(aleft, aright) do{\
     llist_t * old;\
@@ -94,6 +96,16 @@ struct llist_t{
         llist_init(el);\
     } \
 }while(0)
+
+#define llist_size(list) ({\
+    llist_t * base = list;\
+    int size = 0;\
+    while(base->left != list) {\
+        size++;\
+        base = base->left;\
+    }\
+    size;\
+})
 
 // this is pointer to the left element in chain
 #define llist_left(list) (list)->left
@@ -119,6 +131,15 @@ dbd_dr_globals_init()
     dTHX;
     MUTEX_INIT(&mng_lock);
 #endif
+    // Ancient-Wizard:
+    // I believe this list, being static, was intented to be shared by all threads!
+    //  Additional comments in the code suggest this as well.
+    // However as it was written every thread was nuking the setup of the last
+    //  startng with a fresh empty list. Smells like a memoty leak at best
+    //  and a crash at worst.
+    // Letting them go with no apparent cleanup.
+    if ( llist_is_initialized(&mng_list) ) return;
+
     llist_init(&mng_list);
     dr_instances = 0;
     mng_env = NULL;
@@ -126,9 +147,9 @@ dbd_dr_globals_init()
 }
 /*}}}*/
 
-struct box_st{
+struct box_st {
     llist_t lock;
-    int refs; /* this shall be positiv for OCIEnv and negativ for Session Pool */
+    int refs; /* this shall be positive for OCIEnv and negativ for Session Pool */
 };
 
 struct env_box_st
