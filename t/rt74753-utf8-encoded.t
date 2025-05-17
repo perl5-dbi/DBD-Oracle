@@ -82,5 +82,6 @@ $val = undef;
 # WARNING: does *not* truncate. DBD::Oracle doesn't heed the 3rd parameter
 $sth->bind_param_inout( ':ret', \$val, 1 );
 $sth->execute;
+$dbh && $dbh->rollback;
 
 is Encode::is_utf8($val) => 1, 'truncated, yet utf8 encoded';

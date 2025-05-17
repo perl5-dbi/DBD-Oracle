@@ -135,9 +135,8 @@ dbd_dr_globals_init()
     // I believe this list, being static, was intented to be shared by all threads!
     //  Additional comments in the code suggest this as well.
     // However as it was written every thread was nuking the setup of the last
-    //  startng with a fresh empty list. Smells like a memoty leak at best
-    //  and a crash at worst.
-    // Letting them go with no apparent cleanup.
+    //  startng with a fresh empty list. Smells like a memory leak at best
+    //  and a crash at worst. We received both.
     if ( llist_is_initialized(&mng_list) ) return;
 
     llist_init(&mng_list);
@@ -979,8 +978,15 @@ dbd_dr_mng()
     }
     if(mng_env == NULL)
     {
+        // Now that this env handle is actually shared by threads the safest setup uses OCI_THREADED
+        ub4 oci_mode = OCI_DEFAULT;
+        // I haven't been able to prove that this is needed (TBD)
+        // I'm still chasing another SEGV in an unknown call as of yet!
+        // #if defined(USE_ITHREADS)
+        // oci_mode |= OCI_THREADED;
+        // #endif
         sword status = OCIEnvNlsCreate(
-                &mng_env, OCI_DEFAULT,
+                &mng_env, oci_mode,
                 0, NULL, NULL, NULL,
                 0, NULL, 0, 0
         );

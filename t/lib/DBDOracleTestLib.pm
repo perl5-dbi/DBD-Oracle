@@ -192,7 +192,8 @@ sub db_handle {
 
     my $dsn    = oracle_test_dsn();
     my $dbuser = $ENV{ORACLE_USERID} || 'scott/tiger';
-    my $dbh    = DBI->connect( $dsn, $dbuser, 'WOOPS', $p );
+    my $dbpass = $ENV{ORACLE_PASSWD} || '';
+    my $dbh    = DBI->connect( $dsn, $dbuser, $dbpass, $p );
     return $dbh
 
 }

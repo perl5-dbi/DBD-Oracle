@@ -8,10 +8,6 @@ use threads::shared 1.51;
 use Time::HiRes qw| usleep |;
 use Test::More;
 use Data::Dumper;
-use IPC::Open2 ();
-
-#use lib 't/lib';
-#use DBDOracleTestLib qw/ oracle_test_dsn /;
 
 local $Data::Dumper::Indent = 1;
 local $Data::Dumper::Terse  = 1;
@@ -21,10 +17,6 @@ $ENV{DBD_ORACLE_DUMP} = 0;
 our $VERSION      = 0.1;
 our $VERBOSE      = 0;
 our $ORACLE_HOME  = $ENV{ORACLE_HOME};
-our $TNS_ADMIN    = $ENV{TNS_ADMIN};
-our $ORA_SOURCE   = $ENV{DBI_DSN} || 'dbi:Oracle';
-our $ORA_SCHEMA   = $ENV{ORACLE_USERID} || 'scott/tiger';
-our $ORA_PASSWD   = 'WOOPS';
 
 my $TEST_START = Time::HiRes::time();
 
@@ -50,34 +42,15 @@ sub abort
   exit 1;
 }
 
-ORACLE_SETUP:
 {
-  section 'ORACLE Settings Configured';
-
-  ok    $ORACLE_HOME,   'ORACLE_HOME is-set';
-  ok -d $ORACLE_HOME,   'ORACLE_HOME found';
-  ok    $TNS_ADMIN,     'TNS_ADMIN is-set';
-  ok -d $TNS_ADMIN,     'TNS_ADMIN found';
-  ok    $ORA_SOURCE,    'ORA_SOURCE detected' or abort 'SETUP: export ORA_SOURCE="Oracle DB identifier"';
-  ok    $ORA_SCHEMA,    'ORA_SCHEMA detected' or abort 'SETUP: export ORA_SCHEMA="Oracle DB SCHEMA"';
-  ok    $ORA_PASSWD,    'ORA_PASSWD detected' or abort 'SETUP: export ORA_PASSWD="Oracle DB PASSWORD"';
+  DB::Queue->do_connect( { PrintError => 0 } ) or plan skip_all => "Unable to connect to oracle\n";
 }
+
+## Noise hides real issues (if there are any)
+local $SIG{__WARN__} = sub { warn $_[0] unless $_[0] =~ m/^Subroutine/xi };
 
 PERL_NOTICE:
 {
-  section 'PERL - runtime';
-
-  my $perl_path;
-
-  ok(( open my $_f, '-|', 'which perl' ), '(which perl)->open');
-  ok(( $perl_path = <$_f> ), 'read path' );
-  ok $_f->close,  'f->close';
-
-  chomp $perl_path;
-
-  ok    $perl_path, $perl_path;
-  ok -x $perl_path, "-x $perl_path";
-
   note qx|perl -V|  if $VERBOSE;
 }
 
@@ -222,6 +195,9 @@ use Time::HiRes qw| usleep |;
 use DBI;
 use Test::More;
 use Data::Dumper;
+
+use lib 't/lib';
+use DBDOracleTestLib qw/ db_handle /;
 
 our $VERSION;
 our $VERBOSE;
@@ -417,13 +393,19 @@ QUEUE_BACKEND:
     return 1;
   }
 
+  sub do_connect
+  {
+    shift if $_[0] && ( ref($_[0]) eq __PACKAGE__ || $_[0] eq __PACKAGE__ );
+    return db_handle(@_);
+  }
+
   sub _connect
   {
     if ( ! $dbh )
     {
       lock $ONETHR;
       printf "# CONNECT-ENTER %d\n", $tid if $VERBOSE;
-      $dbh = DBI->connect( $main::ORA_SOURCE, $main::ORA_SCHEMA, $main::ORA_PASSWD );
+      $dbh = do_connect();
       printf "# CONNECT-EXIT  %d\n", $tid if $VERBOSE;
     # threads->yield;
     # usleep 250000;

@@ -159,6 +159,8 @@ for my $test_info (@tests) {
     }
 }
 
+$dbh && $dbh->disconnect;
+
 END { eval { drop_table($dbh,$table); } }
 
 

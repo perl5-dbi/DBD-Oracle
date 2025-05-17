@@ -268,7 +268,7 @@ sub test_inout_array_tests {
     cmp_ok( $out_array[3],      '==', 4, '... out values should match 3' );
     cmp_ok( $out_array[4],      '==', 5, '... out values should match 5' );
 
-    $dbh->do("drop table $table")  or warn $dbh->errstr;
+    $dbh->do("drop table $table PURGE")  or warn $dbh->errstr;
     $dbh->do("drop sequence $seq") or die $dbh->errstr;
    }
 }
