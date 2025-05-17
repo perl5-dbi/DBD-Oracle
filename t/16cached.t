@@ -12,15 +12,19 @@ use DBDOracleTestLib qw/ db_handle /;
 
 my $dbh;
 $| = 1;
+
 SKIP: {
     $dbh = db_handle();
 
     #  $dbh->{PrintError} = 1;
     plan skip_all => 'Unable to connect to Oracle' unless $dbh;
 
-    note("Testing multiple cached connections...\n");
+    plan tests => 3;
 
-    plan tests => 1;
+    note 'Testing multiple cached connections...';
+
+    ok -d $Bin, "t/ directory exists";
+    ok -f "$Bin/cache2.pl", "t/cache2.pl exists";
 
     system("perl -MExtUtils::testlib $Bin/cache2.pl");
     ok($? == 0, "clean termination with multiple cached connections");

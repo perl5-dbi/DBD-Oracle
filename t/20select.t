@@ -171,10 +171,10 @@ sub create_test_table {
         dt date,
         primary key (dt, idx)
     )};
-    $dbh->do(qq{ drop table $table }) if $drop;
+    $dbh->do(qq{ DROP TABLE $table PURGE }) if $drop;
     $dbh->do($sql);
     if ( $dbh->err && $dbh->err == 955 ) {
-        $dbh->do(qq{ drop table $table });
+        $dbh->do(qq{ DROP TABLE $table PURGE });
         warn "Unexpectedly had to drop old test table '$table'\n"
           unless $dbh->err;
         $dbh->do($sql);

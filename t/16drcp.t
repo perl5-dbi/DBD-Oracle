@@ -28,6 +28,9 @@ use Test::More;
     }
 }
 
+## Noise hides real issues (if there are any)
+local $SIG{__WARN__} = sub { warn $_[0] unless $_[0] =~ m/^Subroutine/xi };
+
 {
     my $dbh   = db_handle( { ora_drcp=>1, ora_drcp_max => 2, PrintError => 0 } );
     ok defined $dbh, 'first connection from pool';

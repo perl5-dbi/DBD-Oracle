@@ -56,7 +56,8 @@ sub db_handle {
     my $p = shift;
     my $dsn    = oracle_test_dsn();
     my $dbuser = $ENV{ORACLE_USERID} || 'scott/tiger';
-    my $dbh    = DBI->connect_cached( $dsn, $dbuser, '', $p );
+    my $dbpass = $ENV{ORACLE_PASSWD} || '';
+    my $dbh    = DBI->connect_cached( $dsn, $dbuser, $dbpass, $p );
     return $dbh
 
 }

@@ -32,6 +32,9 @@ else {
 my $last_session : shared;
 my $holder : shared;
 
+## Noise hides real issues (if there are any)
+local $SIG{__WARN__} = sub { warn $_[0] unless $_[0] =~ m/^Subroutine/xi };
+
 for my $i ( 0 .. 4 ) {
     threads->create(
         sub {

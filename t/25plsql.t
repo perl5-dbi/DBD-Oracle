@@ -331,6 +331,7 @@ SKIP: {
    # Also see http://www.mail-archive.com/dbi-users@perl.org/msg18835.html
 
    # Known bad OCI versions
+   ## Confirmed: still bad while using 23.7(client) 21.3(server)- 2025-05-17
    skip 'Client version is known to have issue', 4
      if DBD::Oracle::ORA_OCI() > 18.0;
 
