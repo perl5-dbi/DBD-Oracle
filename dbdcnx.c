@@ -1042,8 +1042,17 @@ cnx_detach(pTHX_ imp_dbh_t * imp_dbh)
 
         sword status = OCI_SUCCESS;
 
-        OCISessionEnd_log_stat( imp_dbh, imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, OCI_DEFAULT, status );
-        OCIServerDetach_log_stat( imp_dbh, imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT, status );
+        // GLOBAL Perl END's may cause these to SEGV doe to filehandles (just a guess).
+        // The person thay left off the logging in the first place should have provided a clue
+        //  assuming thay knew what the issue was.
+        // I thought I was being clever by adding the logging to these OCI calls;
+        //  or at least help to debug the original SEGV issue.
+
+        // OCISessionEnd_log_stat( imp_dbh, imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, OCI_DEFAULT, status );
+        // OCIServerDetach_log_stat( imp_dbh, imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT, status );
+
+        OCISessionEnd( imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, OCI_DEFAULT );
+        OCIServerDetach( imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT );
 
 #ifdef ORA_OCI_112
     }
