@@ -1042,17 +1042,37 @@ cnx_detach(pTHX_ imp_dbh_t * imp_dbh)
 
         sword status = OCI_SUCCESS;
 
-        // GLOBAL Perl END's may cause these to SEGV doe to filehandles (just a guess).
-        // The person thay left off the logging in the first place should have provided a clue
-        //  assuming thay knew what the issue was.
+        // GLOBAL Perl END's may cause these to SEGV due to filehandles (just a guess).
+        //  Also forking can cause duplicate closings of a session. A preexisting handle in
+        //  the parent is duplicated in the child. The first process to call SessionEnd
+        //  wins, each successive call returns OCI_ERROR.
+        //
+        // The prior author included a comment about errors but was not specific and choose to ignore them.
+        //
         // I thought I was being clever by adding the logging to these OCI calls;
-        //  or at least help to debug the original SEGV issue.
+        //  to help debug the original SEGV issue. Best guess is the logging relies on
+        //  the filehandles being valid and they are not always valid, hence the SEGV
+        //  within Perl's IO printing.
+        //
+        // The OCI calls are successful but the logging is not. I don't like silent failures
+        //  so we'll use a more direct approach to handle this; keeping Perl and it's state
+        //  out of the picture.
 
         // OCISessionEnd_log_stat( imp_dbh, imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, OCI_DEFAULT, status );
         // OCIServerDetach_log_stat( imp_dbh, imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT, status );
 
-        OCISessionEnd( imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, OCI_DEFAULT );
-        OCIServerDetach( imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT );
+        if (( status = OCISessionEnd( imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, OCI_DEFAULT )) != OCI_SUCCESS
+           && status != OCI_ERROR )
+        {
+            // by printing the pointers I could see the children and parent were
+            //  using the same handles. The first is successful, the rest fail. (seems reasonable enough)
+            fprintf( stderr, "OCISessionEnd() failed: %d %p %p %p pid=%d\n", status, imp_dbh->svchp, imp_dbh->errhp, imp_dbh->seshp, getpid());
+        }
+
+        if (( status = OCIServerDetach( imp_dbh->srvhp, imp_dbh->errhp, OCI_DEFAULT )) != OCI_SUCCESS )
+        {
+            fprintf( stderr, "OCIServerDetach() failed: %d pid=%d\n", status, getpid());
+        }
 
 #ifdef ORA_OCI_112
     }

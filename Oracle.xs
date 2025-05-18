@@ -410,7 +410,7 @@ ora_ping(dbh)
 	/*later I will replace this with the actual OCIPing command*/
 	/*This will work if the DB goes down, */
 	/*If the listener goes down it is another case as the Listener is needed to establish the connection not maintain it*/
-	/*so we should stay connected but we cannot get nay new connections*/
+	/*so we should stay connected but we cannot get any new connections*/
 	{
         /* RT 69059 - despite OCIPing being introduced in 10.2
          * it is not available in all versions of 10.2 for AIX
