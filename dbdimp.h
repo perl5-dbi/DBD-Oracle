@@ -67,7 +67,7 @@ struct imp_dbh_st {
 	OCIServer 	*srvhp;
 	OCISvcCtx 	*svchp;
 	OCISession	*seshp;
-    SV          *taf_function; /*User supplied TAF functiomn*/
+    SV          *taf_function; /*User supplied TAF function */
     taf_callback_t taf_ctx;
 	int RowCacheSize; /* both of these are defined by DBI spec*/
 	int RowsInCache;	/* this vaue is RO and cannot be set*/
