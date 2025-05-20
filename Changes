@@ -2,6 +2,7 @@ Revision history for DBD::Oracle
 
 {{$NEXT}}
 
+  Fix up unit tests (Dean Hamstead)
   Remove outdated ifdefs (GH#186, H.Merijn Brand)
   Attempts to resolve SEGV issue (GH#187, Victor)
   Various clean ups and typos (GH#187, Victor)
