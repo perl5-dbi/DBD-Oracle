@@ -2,9 +2,15 @@ Revision history for DBD::Oracle
 
 {{$NEXT}}
 
+  Remove outdated ifdefs (GH#186, H.Merijn Brand)
+  Attempts to resolve SEGV issue (GH#187, Victor)
+  Various clean ups and typos (GH#187, Victor)
   Makefile.PL fix for missing Test::NoWarnings build requirement (GH#175, Wesley Hinds)
   don't care about ExtUtils::MakeMaker version number anymore (GH#184, Wesley Hinds)
   Makefile.PL: help to find linking libraries on Gentoo (GH#184, Marco Genasci)
+
+1.90    2024-04-16
+
   Specify resources metadata explicitly in dist.ini (GH#162, Graham Knop)
   Ensure dbivport.h is installed- (GH#150, Wesley Hinds)
   Add DBI to ConfigureRequires, BuildRequires, and Test Requires - (GH#155)
