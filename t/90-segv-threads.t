@@ -3,11 +3,20 @@
 use 5.030003;
 use strict;
 use warnings;
-use threads;
-use threads::shared 1.51;
-use Time::HiRes qw| usleep |;
+
+BEGIN { eval 'use threads; use threads::shared 1.51;' }
+
 use Test::More;
+use Config;
+use Time::HiRes qw| usleep |;
 use Data::Dumper;
+
+# Check if Perl is compiled with thread support
+if (!$Config{useithreads}) {
+  plan skip_all => "this $^O perl $] not configured to support iThreads";
+  done_testing();
+  exit 1
+}
 
 local $Data::Dumper::Indent = 1;
 local $Data::Dumper::Terse  = 1;
