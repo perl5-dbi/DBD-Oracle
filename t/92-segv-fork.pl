@@ -9,26 +9,27 @@ use Time::HiRes qw| usleep |;
 our $VERSION = 0.01;
 
 ## GOAL: Test for segfaults in parent processes receieving SIGCHLD
-##   An application I maintain, dispatces childern to perform work
-##   that the parent process does not have tie to perform. It has completed
-##   the work, needed, plces that work into a queeue, and the queue is used
-##   by the parent process dispatch the work by dispatcing child proceses.
-##   The parent reaps the children and launces new children as needed
-##   until the queue is empty. The parent process is a long running
-##   performng DB work it must itself perform.
+##   An application I maintain, dispatches childern to perform work
+##   that the parent process does not have time to perform. It has completed
+##   the work it needed, places the remaing task into a queeue, and the queue is used
+##   by the parent process for dispatching child proceses.
+##   The parent reaps the children and launches new children as needed
+##   until the queue is empty. The parent process is long running
+##   performing DB work it must itself perform.
 
-##  We dont have any real work here so we'll emulate the work by.
+##  We dont have any real work here so we'll emulate the work.
 ##   This program is the child process. A test program that forks us
-##   will run this to emulate the work being dispatched.
+##   will run to emulate the work being dispatched.
 ##
 ##  1. Connecting to DB
 ##  2. Read data.
 ##  3. Pretending to do work for a random period of time in the range of 2-5 seconds
-##      (which approxily matches the time the actual tool I maintain takes to do work)
+##      (which approxily matches the time the actual tool I maintain takes to do the task)
 ##  4. Disconnect from DB
 ##  5. Exit with a success exit code.
 ##      The parent does not care if we succeeded or not, it just needs to know
 ##      that we have completed the work and available for reaping.
+##      allowing for another task to be dispatched.
 
 local $Data::Dumper::Indent = 1;
 local $Data::Dumper::Terse  = 1;
