@@ -1,6 +1,5 @@
 #!/usr/bin/env perl
 
-use 5.030003;
 use strict;
 use warnings;
 use Time::HiRes qw| usleep |;
