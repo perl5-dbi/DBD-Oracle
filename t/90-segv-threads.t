@@ -1,6 +1,5 @@
 #!/usr/bin/env perl
 
-use 5.030003;
 use strict;
 use warnings;
 use Test::More;
@@ -202,6 +201,7 @@ use strict;
 use warnings;
 use threads;
 use threads::shared 1.51;
+use Thread::Queue;
 use Time::HiRes qw| usleep |;
 use DBI;
 use Test::More;
