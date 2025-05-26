@@ -47,9 +47,31 @@ PERL_NOTICE:
   note qx|perl -V|  if $VERBOSE;
 }
 
+sub bark_thread_count
+{
+  my $expected = shift || 2;
+  my $proc = sprintf '/proc/%s/status', $$;
+  if ( -f $proc && open my $_PROC, '<', $proc )
+  {
+    is $_, $expected, 'Expected thread count=' . $expected for map { ( split ' ' )[1] } grep { m=Threads= } <$_PROC>;
+    $_PROC && ( $_PROC->close or warn $! )
+  }
+  return;
+}
+
 ORACLE_READY:
 {
-  Child::Queue->do_connect( { PrintError => 0 } ) or plan skip_all => "Unable to connect to oracle\n";
+  section 'ORACLE - READY';
+  bark_thread_count(1);
+  my $dbh = Child::Queue->do_connect( { PrintError => 0 } ) or plan skip_all => "Unable to connect to oracle\n";
+  if ( $dbh )
+  {
+    is $dbh->do(qq|ALTER SESSION SET NLS_DATE_FORMAT         = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_DATE_FORMAT';
+    is $dbh->do(qq|ALTER SESSION SET NLS_TIMESTAMP_FORMAT    = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_TIMESTAMP_FORMAT';
+    is $dbh->do(qq|ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT';
+    warn Dumper( $dbh->selectall_arrayref(qq|SELECT SYSTIMESTAMP AT TIME ZONE 'UTC' FROM DUAL|));
+  }
+  bark_thread_count(2);
 }
 
 QUEUE_BASICS:
