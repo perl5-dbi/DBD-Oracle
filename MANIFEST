@@ -98,6 +98,8 @@ t/70meta.t
 t/80ora_charset.t
 t/90-segv-threads.t
 t/91-segv-fork.t
+t/92-segv-fork.pl
+t/92-segv-fork.t
 t/cache2.pl
 t/lib/DBDOracleTestLib.pm
 t/lib/ExecuteArray.pm
