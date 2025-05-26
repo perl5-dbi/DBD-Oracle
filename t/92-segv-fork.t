@@ -69,9 +69,11 @@ ORACLE_READY:
     is $dbh->do(qq|ALTER SESSION SET NLS_DATE_FORMAT         = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_DATE_FORMAT';
     is $dbh->do(qq|ALTER SESSION SET NLS_TIMESTAMP_FORMAT    = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_TIMESTAMP_FORMAT';
     is $dbh->do(qq|ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT';
-    warn Dumper( $dbh->selectall_arrayref(qq|SELECT SYSTIMESTAMP AT TIME ZONE 'UTC' FROM DUAL|));
+    note Dumper( $dbh->selectall_arrayref(qq|SELECT SYSTIMESTAMP AT TIME ZONE 'UTC' FROM DUAL|));
   }
-  bark_thread_count(2);
+  $dbh = undef;
+  # Not important but an indication SEGV is eminent
+  # bark_thread_count(2);
 }
 
 QUEUE_BASICS:
