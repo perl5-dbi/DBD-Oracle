@@ -73,6 +73,7 @@ ORACLE_READY:
   }
   $dbh = undef;
   # Not important but an indication SEGV is eminent
+  #  (wont't PASS if Perl is not built with threads support)
   # bark_thread_count(2);
 }
 
@@ -182,7 +183,7 @@ sub _SIG_CHLD
 {
   my $pid = waitpid(-1, WNOHANG);
   my $code = $? >> 8;
- 
+
   return unless $pid > 0;
 
   if ( exists $WORKSET->{$pid} )
