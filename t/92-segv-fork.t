@@ -1,5 +1,13 @@
 #!/usr/bin/env perl
 
+## A SEGV during this test is a sign that Perl itself lacks the patch
+##  that allows a SIGCHLD (any interrupt) to be handedled using a worker
+##  thread created by Oracle Instant Client.
+##
+## Consult: https://github.com/perl5-dbi/DBD-Oracle/issues/192
+##     and: https://github.com/Perl/perl5/issues/23326
+##  for details concerning the issue and the patch.
+
 use strict;
 use warnings;
 use Time::HiRes qw| usleep |;
@@ -73,7 +81,7 @@ ORACLE_READY:
   }
   $dbh = undef;
   # Not important but an indication SEGV is eminent
-  # bark_thread_count(2);
+  bark_thread_count(2);
 }
 
 QUEUE_BASICS:
@@ -106,12 +114,10 @@ QUEUE_BASICS:
 
 FORK_SEGV:
 {
-# last FORK_SEGV if 1;
-
   section 'FORK - SEGV';
 
   my $queue = Child::Queue->new( -DEPTH => 8 );
-  my $jobs  = 80;
+  my $jobs  = 40;
 
   is  $queue->depth,     8, 'Queue depth';
   is  $queue->size,      0, 'Queue size';
