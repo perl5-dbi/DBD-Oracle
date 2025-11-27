@@ -957,6 +957,18 @@ sub find_oracle_home {
         # but for non-IC ORACLE_HOME may be dir above a /lib*
         s:/lib\w*/?$:: for @oh; # remove possible trailing lib dir
     }
+    if ( !@oh && $^O eq 'linux' && -x '/sbin/ldconfig' ) {
+        my @cmd = qw( /sbin/ldconfig -p );
+        if ( open my $fh, '-|', @cmd ) {
+            local $/;
+            push @oh => ( <$fh> =~
+                  m{^\tlibclntsh.$so[ ].*[ ]=>[ ](/.*)/libclntsh.so$}msg );
+            close $fh or warn "Closing @cmd failed: $!\n";
+        }
+        else {
+            warn "Cannot run: @cmd\n";
+        }
+    }
     if (!@oh) { # else try the traditional kind of install
         # this should work for non-instant-client installs ($OH/bin & $OH/lib*)
         @oh = grep { (glob("$_/../lib*/libclntsh.$so*"))[0] } @path;
