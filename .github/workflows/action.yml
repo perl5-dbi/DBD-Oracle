@@ -23,12 +23,12 @@ jobs:
     env:
       ORACLEV: latest
       ORACLE_USERID: kermit/foobar
-      ORACLE_DSN: 'dbi:Oracle://oracle:1521/XEPDB1'
+      ORACLE_DSN: 'dbi:Oracle://oracle:1521/FREEPDB1'
     services:
       # Oracle service (label used to access the service container)
       oracle:
         # Docker Hub image (change the tag "latest" to any other available one)
-        image: gvenzl/oracle-xe:latest
+        image: gvenzl/oracle-free:latest
         # Provide passwords and other environment variables to container
         env:
           ORACLE_PASSWORD: adminpass
