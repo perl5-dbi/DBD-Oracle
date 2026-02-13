@@ -1015,18 +1015,54 @@ SQL
     }
 
     sub plsql_errstr {
-        # original version thanks to Bob Menteer
-        my $sth = shift->prepare_cached(q{
-            SELECT name, type, line, position, text
-            FROM user_errors ORDER BY name, type, sequence
-        }) or return undef;
-        $sth->execute or return undef;
-        my ( @msg, $oname, $otype, $name, $type, $line, $pos, $text );
-        $oname = $otype = 0;
-        while ( ( $name, $type, $line, $pos, $text ) = $sth->fetchrow_array ) {
-            if ( $oname ne $name || $otype ne $type ) {
-               push @msg, "Errors for $type $name:";
-               $oname = $name;
+        # Enhanced version: optionally accept (name) or (owner, name)
+        # to filter errors for a specific object.
+        # With no args, returns all current user errors (original behavior).
+        # With (name), returns errors for that object from user_errors.
+        # With (owner, name), returns errors from all_errors for that
+        # owner, allowing a privileged user to see another schema's errors.
+        my ($dbh, $owner, $name) = @_;
+
+        # Oracle stores unquoted identifiers in uppercase
+        $name  = uc($name)  if defined $name;
+        $owner = uc($owner) if defined $owner;
+
+        my $sth;
+        if ($owner) {
+            # Query all_errors for a specific owner and object name
+            $sth = $dbh->prepare_cached(q{
+                SELECT name, type, line, position, text
+                FROM all_errors
+                WHERE owner = ? AND name = ?
+                ORDER BY name, type, sequence
+            }) or return undef;
+            $sth->execute($owner, $name) or return undef;
+        }
+        elsif (defined $name) {
+            # Query user_errors for a specific object name
+            $sth = $dbh->prepare_cached(q{
+                SELECT name, type, line, position, text
+                FROM user_errors
+                WHERE name = ?
+                ORDER BY name, type, sequence
+            }) or return undef;
+            $sth->execute($name) or return undef;
+        }
+        else {
+            # Original behavior: return all current user errors
+            $sth = $dbh->prepare_cached(q{
+                SELECT name, type, line, position, text
+                FROM user_errors ORDER BY name, type, sequence
+            }) or return undef;
+            $sth->execute or return undef;
+        }
+
+        my ( @msg, $oname, $otype, $ename, $type, $line, $pos, $text );
+        $oname = $otype = '';
+        while ( ( $ename, $type, $line, $pos, $text ) = $sth->fetchrow_array ) {
+            if ( $oname ne $ename || $otype ne $type ) {
+               push @msg, "Errors for $type $ename:";
+               $oname = $ename;
                $otype = $type;
             }
             push @msg, "$line.$pos: $text";
@@ -2087,16 +2123,30 @@ can be called directly.
 
 =head2 B<plsql_errstr>
 
-This function returns a string which describes the errors
-from the most recent PL/SQL function, procedure, package,
-or package body compile in a format similar to the output
-of the SQL*Plus command 'show errors'.
+This function returns a string which describes PL/SQL compilation
+errors in a format similar to the output of the SQL*Plus command
+'show errors'.
 
 The function returns undef if the error string could not
 be retrieved due to a database error.
-Look in $dbh->errstr for the cause of the failure.
+Look in C<< $dbh->errstr >> for the cause of the failure.
 
 If there are no compile errors, an empty string is returned.
+
+Called with no arguments, it returns B<all> current errors from
+C<user_errors>.  You may also pass a specific object name,
+or an owner and object name, to limit the results to a single
+object.  Names are automatically uppercased to match Oracle's
+default identifier storage.
+
+    # All current user errors (original behavior)
+    my $msg = $dbh->func( 'plsql_errstr' );
+
+    # Errors for a specific object in the current schema
+    my $msg = $dbh->func( 'MY_PROCEDURE', 'plsql_errstr' );
+
+    # Errors for an object owned by another user (uses all_errors)
+    my $msg = $dbh->func( 'OTHER_USER', 'THEIR_PROC', 'plsql_errstr' );
 
 Example:
 
