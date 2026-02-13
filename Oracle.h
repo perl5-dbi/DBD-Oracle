@@ -55,6 +55,19 @@
 
 #include <dbd_xsh.h>		/* installed by the DBI module	*/
 
+/* DBISTATE_DECLARE defines a static dbi_get_state() function that may
+ * not be used in every translation unit.  Wrap it to suppress the
+ * resulting -Wunused-function warning.                                 */
+#if defined(__GNUC__) || defined(__clang__)
+#  define DBD_ORA_DBISTATE_DECLARE \
+     _Pragma("GCC diagnostic push") \
+     _Pragma("GCC diagnostic ignored \"-Wunused-function\"") \
+     DBISTATE_DECLARE; \
+     _Pragma("GCC diagnostic pop")
+#else
+#  define DBD_ORA_DBISTATE_DECLARE DBISTATE_DECLARE;
+#endif
+
 /* These prototypes are for dbdimp.c funcs used in the XS file          */
 /* These names are #defined to driver specific names in dbdimp.h        */
 

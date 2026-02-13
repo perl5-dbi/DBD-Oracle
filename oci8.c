@@ -18,7 +18,7 @@
 #undef sv_set_undef
 #define sv_set_undef(sv) if (SvROK(sv)) sv_unref(sv); else SvOK_off(sv)
 
-DBISTATE_DECLARE;
+DBD_ORA_DBISTATE_DECLARE
 
 int describe_obj_by_tdo(SV *sth,imp_sth_t *imp_sth,fbh_obj_t *obj,ub2 level );
 int dump_struct(imp_sth_t *imp_sth,fbh_obj_t *obj,int level);

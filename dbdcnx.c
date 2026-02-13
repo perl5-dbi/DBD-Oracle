@@ -59,7 +59,7 @@
  }}} */
 #include "Oracle.h"
 
-DBISTATE_DECLARE;
+DBD_ORA_DBISTATE_DECLARE
 
 typedef struct llist_t llist_t;
 /* small implementation for doubly-linked list {{{ */

@@ -29,7 +29,7 @@
 #define SvPOK_only_UTF8(sv) SvPOK_only(sv)
 #endif
 
-DBISTATE_DECLARE;
+DBD_ORA_DBISTATE_DECLARE
 
 int ora_fetchtest;         /* internal test only, not thread safe */
 int dbd_verbose		  = 0; /* DBD only debugging*/
@@ -4505,7 +4505,7 @@ static int enable_taf( pTHX_ SV *dbh, imp_dbh_t *imp_dbh)
     if (!can_taf)
         return local_error(aTHX_ dbh,
         "You are attempting to enable TAF on a server that is not TAF Enabled");
-    
+
 
     status = reg_taf_callback(dbh, imp_dbh);
     if (status != OCI_SUCCESS)
