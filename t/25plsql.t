@@ -30,7 +30,7 @@ if ($dbh) {
         plan skip_all =>
 'Oracle server either does not support pl/sql or it is not properly installed';
     }
-    plan tests => 86;
+    plan tests => 108;
 }
 else {
     plan skip_all => "Unable to connect to Oracle \n";
@@ -231,25 +231,103 @@ ok( $csr->bind_param_inout( ':arg', \$p1, 200 ), 'rebind arg with more space' );
 ok( $csr->execute, 'execute rebind with more space' );
 is( length($p1), 200, 'expected return length' );
 
-# --- test plsql_errstr function
-#$csr = $dbh->prepare(q{
-#    create or replace procedure perl_dbd_oracle_test as
-#    begin
-#          procedure filltab( stuff out tab ); asdf
-#    end;
-#});
-#ok(0, ! $csr);
-#if ($dbh->err && $dbh->err == 6550) {        # PL/SQL error
-#        warn "errstr: ".$dbh->errstr;
-#        my $msg = $dbh->func('plsql_errstr');
-#        warn "plsql_errstr: $msg";
-#        ok(0, $msg =~ /Encountered the symbol/, "plsql_errstr: $msg");
-#}
-#else {
-#        warn "plsql_errstr test skipped ($DBI::err)\n";
-#        ok(0, 1);
-#}
-#die;
+# --- test plsql_errstr function (GH#85)
+# Enhanced version tests: no-args (backward compat), single-name filtering,
+# and (owner, name) for all_errors queries
+
+# Clean up any test objects from previous runs
+for my $obj (qw( TEST_ERRSTR_1 TEST_ERRSTR_2 )) {
+    eval { $dbh->do("DROP PROCEDURE $obj") };
+}
+
+# Create procedure with compilation error
+$dbh->do(q{
+    CREATE OR REPLACE PROCEDURE test_errstr_1 AS
+    BEGIN
+        PROCEDURE invalid_syntax(); asdf
+    END;
+});
+my $errstr_err1 = $dbh->err || 0;
+
+SKIP: {
+    skip 'Could not trigger PL/SQL compilation error for test_errstr_1', 3
+        unless $errstr_err1 == 6550;
+
+    # No-args: should return all current user errors (backward compat)
+    my $msg = $dbh->func('plsql_errstr');
+    ok( defined $msg, 'plsql_errstr() with no args returns defined' );
+    like( $msg, qr/TEST_ERRSTR_1/i, 'no-args: errors contain TEST_ERRSTR_1' );
+    like( $msg, qr/Errors for/, 'no-args: output includes header' );
+}
+
+# Create second procedure with error
+$dbh->do(q{
+    CREATE OR REPLACE PROCEDURE test_errstr_2 AS
+    BEGIN
+        PROCEDURE another_bad_syntax(); xyz
+    END;
+});
+my $errstr_err2 = $dbh->err || 0;
+
+SKIP: {
+    skip 'Could not trigger PL/SQL compilation errors for both procs', 3
+        unless $errstr_err1 == 6550 && $errstr_err2 == 6550;
+
+    # Name filtering: only test_errstr_2 errors returned
+    my $msg = $dbh->func( 'TEST_ERRSTR_2', 'plsql_errstr' );
+    ok( defined $msg, 'plsql_errstr(name) returns defined' );
+    like( $msg, qr/TEST_ERRSTR_2/i, 'named: errors contain TEST_ERRSTR_2' );
+    unlike( $msg, qr/TEST_ERRSTR_1/i, 'named: errors do NOT contain TEST_ERRSTR_1' );
+}
+
+# Non-existent object returns empty string
+{
+    my $msg_none = $dbh->func( 'NONEXISTENT_OBJECT_XYZ', 'plsql_errstr' );
+    ok( defined $msg_none, 'plsql_errstr(nonexistent) returns defined (not undef)' );
+    is( $msg_none, '', 'plsql_errstr(nonexistent) returns empty string' );
+}
+
+# Query with (owner, name) form
+{
+    my ($current_user) = $dbh->selectrow_array('SELECT user FROM dual');
+
+    my $msg_owner = $dbh->func( $current_user, 'TEST_ERRSTR_1', 'plsql_errstr' );
+    ok( defined $msg_owner, 'plsql_errstr(owner, name) returns defined' );
+
+    SKIP: {
+        skip 'Could not trigger compilation error for owner test', 1
+            unless $errstr_err1 == 6550;
+        like( $msg_owner, qr/TEST_ERRSTR_1/i,
+              'with owner: errors contain TEST_ERRSTR_1' );
+    }
+}
+
+# Verify all_errors is accessible
+{
+    my $can_query_all = 0;
+    eval {
+        my ($count) = $dbh->selectrow_array(
+            'SELECT COUNT(*) FROM all_errors WHERE ROWNUM <= 1'
+        );
+        $can_query_all = 1;
+    };
+    ok( $can_query_all, 'plsql_errstr: user can query all_errors (has privilege)' );
+}
+
+# Verify lowercase names are uppercased automatically
+SKIP: {
+    skip 'Could not trigger compilation error for case test', 2
+        unless $errstr_err1 == 6550;
+    my $msg_lc = $dbh->func( 'test_errstr_1', 'plsql_errstr' );
+    ok( defined $msg_lc, 'plsql_errstr(lowercase name) returns defined' );
+    like( $msg_lc, qr/TEST_ERRSTR_1/i,
+          'lowercase name is uppercased and matches errors' );
+}
+
+# Clean up test objects
+for my $obj (qw( TEST_ERRSTR_1 TEST_ERRSTR_2 )) {
+    eval { $dbh->do("DROP PROCEDURE $obj") };
+}
 
 # --- test dbms_output_* functions
 $dbh->{PrintError} = 1;
