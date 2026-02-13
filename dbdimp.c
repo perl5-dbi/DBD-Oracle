@@ -2490,13 +2490,15 @@ dbd_rebind_ph_char(imp_sth_t *imp_sth, phs_t *phs)
 		if (imp_sth->ora_pad_empty)
 			croak("Can't use ora_pad_empty with bind_param_inout");
 		if (SvTYPE(phs->sv)!=SVt_RV || !at_exec) {
-			if (phs->ftype == 96){
-                SvGROW(phs->sv,(STRLEN) (unsigned int)phs->maxlen-1);
-                if (DBIc_DBISTATE(imp_sth)->debug >= 6 || dbd_verbose >= 6) {
-                    PerlIO_printf(DBIc_LOGPIO(imp_sth),
-                                  "Growing 96 phs sv to %ld resulted in buffer %ld\n",
-                                  (long)(phs->maxlen - 1), (long)SvLEN(phs->sv));
-                }
+			if (phs->ftype == 96) {
+				if (phs->maxlen > 0) {
+					SvGROW(phs->sv, (STRLEN)(unsigned int)(phs->maxlen - 1));
+					if (DBIc_DBISTATE(imp_sth)->debug >= 6 || dbd_verbose >= 6) {
+						PerlIO_printf(DBIc_LOGPIO(imp_sth),
+									  "Growing 96 phs sv to %ld resulted in buffer %ld\n",
+									  (long)(phs->maxlen - 1), (long)SvLEN(phs->sv));
+					}
+				}
 			} else {
 				STRLEN min_len = 28;
 				(void)SvUPGRADE(phs->sv, SVt_PVNV);
