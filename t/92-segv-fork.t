@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 ## A SEGV during this test is a sign that Perl itself lacks the patch
-##  that allows a SIGCHLD (any interrupt) to be handedled using a worker
+##  that allows a SIGCHLD (any interrupt) to be handled using a worker
 ##  thread created by Oracle Instant Client.
 ##
 ## Consult: https://github.com/perl5-dbi/DBD-Oracle/issues/192
@@ -80,8 +80,8 @@ ORACLE_READY:
     note Dumper( $dbh->selectall_arrayref(qq|SELECT SYSTIMESTAMP AT TIME ZONE 'UTC' FROM DUAL|));
   }
   $dbh = undef;
-  # Not important but an indication SEGV is eminent
-  #  (wont't PASS if Perl is not built with threads support)
+  # Not important but an indication SEGV is imminent
+  #  (won't PASS if Perl is not built with threads support)
   # bark_thread_count(2);
 }
 
