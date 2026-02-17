@@ -1924,6 +1924,18 @@ Determine object type for each instance. All object attributes are returned (not
 
   $dbh->{ora_objects} = 1;
 
+B<Known Limitations:>
+
+Selecting from a table whose column type is a C<NOT INSTANTIABLE> parent
+type will fail with C<OCI-21500: internal error code, arguments:
+[kodrsobj1]> when the result set contains rows of different concrete
+subtypes interleaved with NULLs. This is because DBD::Oracle uses the
+parent type's TDO (Type Descriptor Object) when calling
+C<OCIDefineObject>, which Oracle cannot use to instantiate objects of a
+C<NOT INSTANTIABLE> type. Instantiable parent types with C<NOT FINAL>
+subtypes work correctly. See
+L<https://github.com/perl5-dbi/DBD-Oracle/issues/16>.
+
 =head4 ora_ph_type
 
 The default placeholder datatype for the database session.
