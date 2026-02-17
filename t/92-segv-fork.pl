@@ -51,7 +51,7 @@ exit(5) unless $sth->finish;
 exit(6) unless scalar @ $row == 1;
 # printf "# [ %s ]\n", $row->[];
 
-my $usleep = int(rand(100000)) + 2000000; # 1-3 seconds (to speed up test!)
+my $usleep = int(rand(100000)) + 2000000; # 2.0-2.1 seconds (to speed up test!)
 # printf "# %02.2f seconds\n", $usleep / 1000000;
 usleep($usleep);
 
