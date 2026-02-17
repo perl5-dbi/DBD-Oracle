@@ -3694,8 +3694,12 @@ dbd_describe(SV *h, imp_sth_t *imp_sth)
             fbh->disize = 20;
             fbh->prec	= fbh->disize;
             break;
-          case	104:				/* ROWID Desc	*/
-            fbh->disize = 2000;
+          case	104:				/* ROWID Desc (SQLT_RDD) - IOT UROWID */
+            /* For Index Organized Tables, the ROWID (UROWID) is variable
+               length and can be much larger than a regular ROWID.
+               Use the size reported by Oracle (OCI_ATTR_DATA_SIZE) which
+               was already fetched into fbh->dbsize.  GH #31 */
+            fbh->disize = fbh->dbsize ? fbh->dbsize : 4000;
             fbh->prec	= fbh->disize;
             break;
           case	108:				 /* some sort of embedded object */
