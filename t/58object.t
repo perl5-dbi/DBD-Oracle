@@ -32,7 +32,7 @@ my $dbh = eval{ db_handle( {
 
 plan skip_all => 'Unable to connect to Oracle' unless $dbh;
 
-plan tests => 65;
+plan tests => 66;
 
 my $dbuser = $ENV{ORACLE_USERID} || 'scott/tiger';
 my ($schema) = $dbuser =~ m{^([^/]*)};
@@ -100,7 +100,7 @@ my $final     = $ora8 ? '' : 'FINAL';
 my $not_final = $ora8 ? '' : 'NOT FINAL';
 
 SKIP: {
-    skip q{don't have permission to create type} => 61
+    skip q{don't have permission to create type} => 62
       unless grep { $_ eq 'CREATE TYPE' } @privileges;
 
     sql_do_ok(
@@ -356,6 +356,62 @@ qq{ INSERT INTO $list_table VALUES(81,$list_type($inner_type(null, 'listed'))) }
     is_deeply( $row3[0]->attr, { NUM => '93', OBJ => undef }, 'Check obj' );
 
     ok( !$sth->fetchrow(), 'new: No more rows expected (nested object)' );
+
+    # GH#16: NOT INSTANTIABLE parent with mixed subtypes and NULLs
+  SKIP: {
+        skip 'Subtypes new in Oracle 9' => 1 if $ora8;
+
+        my $abs_parent = "${obj_prefix}_abs_parent";
+        my $abs_sub_a  = "${obj_prefix}_abs_sub_a";
+        my $abs_sub_b  = "${obj_prefix}_abs_sub_b";
+        my $abs_table  = "${obj_prefix}_abs_table";
+
+        my $abs_cleanup = sub {
+            local $dbh->{PrintError} = 0;
+            local $dbh->{RaiseError} = 0;
+            $dbh->do("DROP TABLE $abs_table");
+            $dbh->do("DROP TYPE $abs_sub_b");
+            $dbh->do("DROP TYPE $abs_sub_a");
+            $dbh->do("DROP TYPE $abs_parent");
+        };
+
+        $abs_cleanup->();
+
+        my $setup_ok = eval {
+            $dbh->do(qq{
+                CREATE TYPE $abs_parent AS OBJECT (id NUMBER(38))
+                NOT FINAL NOT INSTANTIABLE
+            });
+            $dbh->do("CREATE TYPE $abs_sub_a UNDER $abs_parent ()");
+            $dbh->do("CREATE TYPE $abs_sub_b UNDER $abs_parent ()");
+            $dbh->do("CREATE TABLE $abs_table (parent $abs_parent)");
+            $dbh->do("INSERT INTO $abs_table VALUES ($abs_sub_a(1))");
+            $dbh->do("INSERT INTO $abs_table VALUES (NULL)");
+            $dbh->do("INSERT INTO $abs_table VALUES ($abs_sub_b(2))");
+            1;
+        };
+
+        unless ($setup_ok) {
+            diag("GH#16 setup failed: $@");
+            $abs_cleanup->();
+            skip 'Could not create NOT INSTANTIABLE test objects', 1;
+        }
+
+      TODO: {
+            local $TODO = 'GH#16: NOT INSTANTIABLE parent with mixed '
+                . 'subtypes and NULLs triggers OCI-21500';
+
+            my $rows = eval {
+                my $sth = $dbh->prepare("SELECT * FROM $abs_table");
+                $sth->execute;
+                $sth->fetchall_arrayref;
+            };
+            ok(defined $rows && @$rows == 3,
+                'fetch mixed subtypes of NOT INSTANTIABLE parent');
+        }
+
+        $abs_cleanup->() unless $ENV{DBD_SKIP_TABLE_DROP};
+    }
 
 }
 
