@@ -1,6 +1,6 @@
 Revision history for DBD::Oracle
 
-{{$NEXT}}
+1.91_3    2026-02-17
 
   Improvements to t/92-segv-fork.t (Victor)
   Fix for "Buffer is accessed out of bounds" from ccpcheck (GH#59, Victor)
