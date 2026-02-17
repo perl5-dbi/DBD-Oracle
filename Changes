@@ -2,6 +2,10 @@ Revision history for DBD::Oracle
 
 {{$NEXT}}
 
+  Use ldconfig to find ORACLE_HOME (Daniel Lewart)
+  Fix documentation (GH#115, Dean Hamstead)
+  Fix some typos (Dean Hamstead)
+
 1.91_3    2026-02-17
 
   Improvements to t/92-segv-fork.t (Victor)
