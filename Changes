@@ -2,6 +2,9 @@ Revision history for DBD::Oracle
 
 {{$NEXT}}
 
+  Replace GIMME with GIMME_V, deprecated a long time agao (GH#209, Dean Hamstead)
+  Replace old k&r style definitions to quiet down compiler warnings (GH#210, Dean Hamstead)
+  Document NOT INSTANTIABLE object type limitation (GH#16, Dean Hamstead)
   Use ldconfig to find ORACLE_HOME (Daniel Lewart)
   Fix documentation (GH#115, Dean Hamstead)
   Fix some typos (Dean Hamstead)
