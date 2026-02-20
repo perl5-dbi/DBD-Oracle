@@ -230,7 +230,7 @@ ora_fetch(sth)
 	if (DBIS->debug > debug)
 	debug = DBIS->debug;
 	DBIh_CLEAR_ERROR(imp_sth);
-	if (GIMME == G_SCALAR) {	/* XXX Oraperl	*/
+	if (GIMME_V == G_SCALAR) {	/* XXX Oraperl	*/
 	/* This non-standard behaviour added only to increase the	*/
 	/* performance of the oraperl emulation layer (Oraperl.pm)	*/
 	if (!imp_sth->done_desc && !dbd_describe(sth, imp_sth))
