@@ -1924,6 +1924,18 @@ Determine object type for each instance. All object attributes are returned (not
 
   $dbh->{ora_objects} = 1;
 
+B<Known Limitations:>
+
+Selecting from a table whose column type is a C<NOT INSTANTIABLE> parent
+type will fail with C<OCI-21500: internal error code, arguments:
+[kodrsobj1]> when the result set contains rows of different concrete
+subtypes interleaved with NULLs. This is because DBD::Oracle uses the
+parent type's TDO (Type Descriptor Object) when calling
+C<OCIDefineObject>, which Oracle cannot use to instantiate objects of a
+C<NOT INSTANTIABLE> type. Instantiable parent types with C<NOT FINAL>
+subtypes work correctly. See
+L<https://github.com/perl5-dbi/DBD-Oracle/issues/16>.
+
 =head4 ora_ph_type
 
 The default placeholder datatype for the database session.
@@ -2970,14 +2982,14 @@ Examples:
   $sth->execute(123, "Merk");
 
   ## Set the first placeholder's value and data type
-  $sth->bind_param(1, 234, { pg_type => ORA_NUMBER });
+  $sth->bind_param(1, 234, { ora_type => SQLT_INT });
 
   ## Set the second placeholder's value and data type.
   ## We don't send a third argument, so the default "varchar" is used
-  $sth->bind_param('$2', "Zool");
+  $sth->bind_param(2, "Zool");
 
   ## We realize that the wrong data type was set above, so we change it:
-  $sth->bind_param('$1', 234, { pg_type => SQL_INTEGER });
+  $sth->bind_param(1, 234, SQL_INTEGER);
 
   ## We also got the wrong value, so we change that as well.
   ## Because the data type is sticky, we don't need to change it
@@ -3650,8 +3662,8 @@ L</execute>, then the quoted versions of the values are returned.
 
 Returns a reference to a hash containing the type names currently bound to placeholders. The keys
 are the same as returned by the ParamValues method. The values are hashrefs containing a single key value
-pair, in which the key is either 'TYPE' if the type has a generic SQL equivalent, and 'pg_type' if the type can
-only be expressed by a Postgres type. The value is the internal number corresponding to the type originally
+pair, in which the key is either 'TYPE' if the type has a generic SQL equivalent, and 'ora_type' if the type can
+only be expressed by an Oracle type. The value is the internal number corresponding to the type originally
 passed in. (Placeholders that have not yet been bound will return undef as the value). This allows the output of
 ParamTypes to be passed back to the L</bind_param> method.
 
