@@ -10,6 +10,7 @@ Revision history for DBD::Oracle
   Makefile.PL fix for missing Test::NoWarnings build requirement (GH#175, Wesley Hinds)
   don't care about ExtUtils::MakeMaker version number anymore (GH#184, Wesley Hinds)
   Makefile.PL: help to find linking libraries on Gentoo (GH#184, Marco Genasci)
+  Change every occurance of 'sv_setvpn' to 'sv_setvpn_mg' (GH#177, lzsiga)
 
 1.90    2024-04-16
 
