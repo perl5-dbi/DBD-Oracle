@@ -3946,7 +3946,7 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field, long offset, long len, 
 	int ftype = fbh->ftype;
 
 	bufsv = SvRV(destrv);
-	sv_setpvn(bufsv,"",0);	/* ensure it's writable string	*/
+	sv_setpvn_mg(bufsv,"",0);	/* ensure it's writable string	*/
 
 #ifdef UTF8_SUPPORT
 	if (ftype == 112 && CS_IS_UTF8(imp_dbh->ncset) ) {
@@ -3974,7 +3974,7 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field, long offset, long len, 
 
 	SvCUR_set(bufsv, destoffset+retl);
 
-	*SvEND(bufsv) = '\0'; /* consistent with perl sv_setpvn etc	*/
+	*SvEND(bufsv) = '\0'; /* consistent with perl sv_setpvn_mg etc	*/
 
 	return 1;
 }
