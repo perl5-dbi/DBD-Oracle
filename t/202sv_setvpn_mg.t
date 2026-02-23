@@ -13,40 +13,30 @@ use lib 't/lib';
 use DBDOracleTestLib qw/oracle_test_dsn db_handle/;
 require bytes;
 
-sub main() {
-    $ENV{NLS_LANG} = 'American_America.AL32UTF8';
+SKIP: {
+    local $ENV{NLS_LANG} = 'American_America.AL32UTF8';
     my $dbh = db_handle( { PrintError => 0 } );
     if ($dbh) {
         plan(tests => 2);
-    } else {
+    }
+    else {
         plan(skip_all => 'Unable to connect to Oracle');
     }
 
-    my $debug= 0;
-    if ($ENV{DEBUG}) {
-        $debug= $ENV{DEBUG} - 0;
-    }
-
-    my $sql= "SELECT 'alpha' nam FROM dual".
-      " UNION SELECT 'beta'  nam FROM dual";
+    my $sql = q|SELECT 'alpha' nam FROM dual UNION SELECT 'beta'  nam FROM dual|;
     my $sth = $dbh->prepare($sql);
     $sth->execute();
-    while (my $row = $sth->fetchrow_arrayref()) {
-        if ($debug>=1) {
-            printf "fetched \"%s\" len=%d bytes::len=%d\n", $row->[0],
-                length($row->[0]), bytes::length($row->[0]);
-        }
-        ok (length($row->[0])==bytes::length($row->[0]));
-        my $trlen= 5;
-        my $stmp= substr($row->[0], 0, $trlen);
-        if ($debug>=1) {
-            printf "truncated(0,%d)=\"%s\" len=%d bytes::len=%d\n", $trlen, $stmp,
-                length($stmp), bytes::length($stmp);
-        }
-    }
-    $sth->finish();
 
+    while (my $row = $sth->fetchrow_arrayref()) {
+        diag sprintf(qq|fetched "%s" len=%d bytes::len=%d\n|,
+            $row->[0], length($row->[0]), bytes::length($row->[0]));
+        is(length($row->[0]), bytes::length($row->[0]), 'Row is correct length');
+        my $trlen = 5;
+        my $stmp = substr($row->[0], 0, $trlen);
+        diag sprintf(qq|truncated(0,%d)="%s" len=%d bytes::len=%d\n|,
+            $trlen, $stmp, length($stmp), bytes::length($stmp));
+    }
+
+    $sth->finish();
     $dbh->disconnect();
 }
-
-main();
