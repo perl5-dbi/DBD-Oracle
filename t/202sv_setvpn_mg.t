@@ -28,12 +28,12 @@ SKIP: {
     $sth->execute();
 
     while (my $row = $sth->fetchrow_arrayref()) {
-        diag sprintf(qq|fetched "%s" len=%d bytes::len=%d\n|,
+        note sprintf(qq|fetched "%s" len=%d bytes::len=%d\n|,
             $row->[0], length($row->[0]), bytes::length($row->[0]));
         is(length($row->[0]), bytes::length($row->[0]), 'Row is correct length');
         my $trlen = 5;
         my $stmp = substr($row->[0], 0, $trlen);
-        diag sprintf(qq|truncated(0,%d)="%s" len=%d bytes::len=%d\n|,
+        note sprintf(qq|truncated(0,%d)="%s" len=%d bytes::len=%d\n|,
             $trlen, $stmp, length($stmp), bytes::length($stmp));
     }
 

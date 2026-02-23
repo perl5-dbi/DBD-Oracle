@@ -37,9 +37,9 @@ sub do_it {
     my $dbh = db_handle()
       or plan skip_all => 'Unable to connect to Oracle';
 
-    diag( "\n" . 'Oracle SERVER version: '
+    note( "\n" . 'Oracle SERVER version: '
           . join( '.', @{ $dbh->func('ora_server_version') } ) );
-    diag( 'Oracle CLIENT version: ' . ORA_OCI() );
+    note( 'Oracle CLIENT version: ' . ORA_OCI() );
 
   SKIP: {
         my @attrs = (
