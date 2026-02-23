@@ -13,7 +13,7 @@ use DBD::Oracle qw/ ORA_OCI /;
 
 my $oci_version = ORA_OCI();
 
-diag 'OCI client library version: ', $oci_version;
+note 'OCI client library version: ', $oci_version;
 
 ok $oci_version;
 
@@ -40,7 +40,7 @@ END_NOTE
 
     $sth->finish;
 
-    diag 'Database version: ', $version;
+    note 'Database version: ', $version;
 
     ok $version, 'Version exists';
 }
