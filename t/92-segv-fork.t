@@ -12,6 +12,13 @@ use strict;
 use warnings;
 use Time::HiRes qw| usleep |;
 use Test::More;
+
+# Only run this test on Linux
+if ( $^O ne 'linux' ) {
+  plan skip_all => "92-segv-fork.t: skipping - test only runs on Linux (running on $^O)\n";
+  exit 0;
+}
+
 use Data::Dumper;
 
 local $Data::Dumper::Indent = 1;
