@@ -67,6 +67,7 @@ t/15nls.t
 t/15threads.t
 t/16cached.t
 t/16drcp.t
+t/202sv_setvpn_mg.t
 t/20select.t
 t/21nchar.t
 t/22cset.t
@@ -96,6 +97,7 @@ t/58object.t
 t/60reauth.t
 t/70meta.t
 t/80ora_charset.t
+t/86bind_col_sticky.t
 t/90-segv-threads.t
 t/91-segv-fork.t
 t/92-segv-fork.pl
