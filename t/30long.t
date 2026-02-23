@@ -497,24 +497,24 @@ sub array_test {
 sub print_substrs {
     my ( $dbh, $len ) = @_;
     my $tsql = "select substr(lng,1,$len),idx from $table order by idx";
-    diag("-- prepare: $tsql\n");
+    note("-- prepare: $tsql\n");
     my $tsth = $dbh->prepare($tsql);
     $tsth->execute();
     while ( my ( $d, $i ) = $tsth->fetchrow_array() ) {
         last if not defined $d;
-        diag("$i: $d\n");
+        note("$i: $d\n");
     }
 }
 
 sub print_lengths {
     my ($dbh) = @_;
     my $tsql = "select length(lng),idx from $table order by idx";
-    diag("-- prepare: $tsql\n");
+    note("-- prepare: $tsql\n");
     my $tsth = $dbh->prepare($tsql);
     $tsth->execute();
     while ( my ( $l, $i ) = $tsth->fetchrow_array() ) {
         last if not defined $l;
-        diag("$i: $l\n");
+        note("$i: $l\n");
     }
 }
 

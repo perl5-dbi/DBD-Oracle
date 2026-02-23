@@ -32,7 +32,7 @@ SKIP: {
     plan skip_all => 'Unable to connect to Oracle' unless $dbh;
     plan skip_all => 'Database NCHAR character set is not Unicode'
       unless db_nchar_is_utf($dbh);
-  # diag "testing utf8 with nchar columns\n";
+    note 'testing utf8 with nchar columns';
 
     show_db_charsets($dbh);
     my $tdata     = test_data('wide_nchar');

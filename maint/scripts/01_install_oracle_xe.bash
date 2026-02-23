@@ -18,7 +18,7 @@ sha256sum oracle-xe_11.2.0-1.0_amd64.deb
 dpkg --install oracle-xe_11.2.0-1.0_amd64.deb
 
 # Hack needed because oracle configuration looks for awk in /bin instead of $PATH
-ln -s /usr/bin/awk /bin/awk
+[ -f '/bin/awk' ] || ln -s /usr/bin/awk /bin/awk
 # Oracle also needs this:
 mkdir -p /var/lock/subsys
 

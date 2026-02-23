@@ -1,4 +1,4 @@
-FROM perl:5.32.1-threaded-buster
+FROM perl:5.38.5-threaded-bookworm
 
 # This will install Oracle XE database and the Oracle SDK to make developing easier
 # It leans on the same scripts used by travis, so they can be tweaked here too

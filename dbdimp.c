@@ -3520,13 +3520,7 @@ dbd_st_execute(SV *sth, imp_sth_t *imp_sth) /* <= -2:error, >=0:ok row count, (-
 }
 
 static int
-do_bind_array_exec(sth, imp_sth, phs,utf8,parma_index,tuples_utf8_av,tuples_status_av)
-	SV *sth;
-	imp_sth_t *imp_sth;
-	phs_t *phs;
-	int utf8;
-	AV *tuples_utf8_av,*tuples_status_av;
-	int parma_index;
+do_bind_array_exec(SV *sth, imp_sth_t *imp_sth, phs_t *phs, int utf8, int parma_index, AV *tuples_utf8_av, AV *tuples_status_av)
 	{
 	dTHX;
 	D_imp_dbh_from_sth;
@@ -3647,8 +3641,7 @@ do_bind_array_exec(sth, imp_sth, phs,utf8,parma_index,tuples_utf8_av,tuples_stat
 }
 
 static void
-init_bind_for_array_exec(phs)
-	phs_t *phs;
+init_bind_for_array_exec(phs_t *phs)
 {
 	dTHX;
 	if (phs->sv == &PL_sv_undef) { /* first bind for this placeholder  */
@@ -3664,14 +3657,7 @@ init_bind_for_array_exec(phs)
 }
 
 int
-ora_st_execute_array(sth, imp_sth, tuples, tuples_status, columns, exe_count, err_count)
-	SV *sth;
-	imp_sth_t *imp_sth;
-	SV *tuples;
-	SV *tuples_status;
-	SV *columns;
-	ub4 exe_count;
-	SV *err_count;
+ora_st_execute_array(SV *sth, imp_sth_t *imp_sth, SV *tuples, SV *tuples_status, SV *columns, ub4 exe_count, SV *err_count)
 {
 	dTHX;
 	dTHR;
@@ -3960,7 +3946,7 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field, long offset, long len, 
 	int ftype = fbh->ftype;
 
 	bufsv = SvRV(destrv);
-	sv_setpvn(bufsv,"",0);	/* ensure it's writable string	*/
+	sv_setpvn_mg(bufsv,"",0);	/* ensure it's writable string	*/
 
 #ifdef UTF8_SUPPORT
 	if (ftype == 112 && CS_IS_UTF8(imp_dbh->ncset) ) {
@@ -3988,7 +3974,7 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field, long offset, long len, 
 
 	SvCUR_set(bufsv, destoffset+retl);
 
-	*SvEND(bufsv) = '\0'; /* consistent with perl sv_setpvn etc	*/
+	*SvEND(bufsv) = '\0'; /* consistent with perl sv_setpvn_mg etc	*/
 
 	return 1;
 }
@@ -4505,7 +4491,7 @@ static int enable_taf( pTHX_ SV *dbh, imp_dbh_t *imp_dbh)
     if (!can_taf)
         return local_error(aTHX_ dbh,
         "You are attempting to enable TAF on a server that is not TAF Enabled");
-    
+
 
     status = reg_taf_callback(dbh, imp_dbh);
     if (status != OCI_SUCCESS)

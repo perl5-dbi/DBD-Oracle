@@ -1,9 +1,24 @@
 #!/usr/bin/env perl
 
+## A SEGV during this test is a sign that Perl itself lacks the patch
+##  that allows a SIGCHLD (any interrupt) to be handled using a worker
+##  thread created by Oracle Instant Client.
+##
+## Consult: https://github.com/perl5-dbi/DBD-Oracle/issues/192
+##     and: https://github.com/Perl/perl5/issues/23326
+##  for details concerning the issue and the patch.
+
 use strict;
 use warnings;
 use Time::HiRes qw| usleep |;
 use Test::More;
+
+# Only run this test on Linux
+if ( $^O ne 'linux' ) {
+  plan skip_all => "92-segv-fork.t: skipping - test only runs on Linux (running on $^O)\n";
+  exit 0;
+}
+
 use Data::Dumper;
 
 local $Data::Dumper::Indent = 1;
@@ -47,9 +62,34 @@ PERL_NOTICE:
   note qx|perl -V|  if $VERBOSE;
 }
 
+sub bark_thread_count
+{
+  my $expected = shift || 2;
+  my $proc = sprintf '/proc/%s/status', $$;
+  if ( -f $proc && open my $_PROC, '<', $proc )
+  {
+    is $_, $expected, 'Expected thread count=' . $expected for map { ( split ' ' )[1] } grep { m=Threads= } <$_PROC>;
+    $_PROC && ( $_PROC->close or warn $! )
+  }
+  return;
+}
+
 ORACLE_READY:
 {
-  Child::Queue->do_connect( { PrintError => 0 } ) or plan skip_all => "Unable to connect to oracle\n";
+  section 'ORACLE - READY';
+  bark_thread_count(1);
+  my $dbh = Child::Queue->do_connect( { PrintError => 0 } ) or plan skip_all => "Unable to connect to oracle\n";
+  if ( $dbh )
+  {
+    is $dbh->do(qq|ALTER SESSION SET NLS_DATE_FORMAT         = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_DATE_FORMAT';
+    is $dbh->do(qq|ALTER SESSION SET NLS_TIMESTAMP_FORMAT    = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_TIMESTAMP_FORMAT';
+    is $dbh->do(qq|ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT';
+    note Dumper( $dbh->selectall_arrayref(qq|SELECT SYSTIMESTAMP AT TIME ZONE 'UTC' FROM DUAL|));
+  }
+  $dbh = undef;
+  # Not important but an indication SEGV is imminent
+  #  (won't PASS if Perl is not built with threads support)
+  # bark_thread_count(2);
 }
 
 QUEUE_BASICS:
@@ -82,12 +122,10 @@ QUEUE_BASICS:
 
 FORK_SEGV:
 {
-# last FORK_SEGV if 1;
-
   section 'FORK - SEGV';
 
   my $queue = Child::Queue->new( -DEPTH => 8 );
-  my $jobs  = 80;
+  my $jobs  = 40;
 
   is  $queue->depth,     8, 'Queue depth';
   is  $queue->size,      0, 'Queue size';
@@ -158,7 +196,7 @@ sub _SIG_CHLD
 {
   my $pid = waitpid(-1, WNOHANG);
   my $code = $? >> 8;
- 
+
   return unless $pid > 0;
 
   if ( exists $WORKSET->{$pid} )

@@ -31,7 +31,6 @@ if ($dbh) {
 }
 else {
     plan skip_all => 'Unable to connect to Oracle';
-    diag('Test reported bugs');
 }
 
 my ( $table, $data0, $data1 ) = setup_test($dbh);

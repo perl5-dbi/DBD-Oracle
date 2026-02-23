@@ -2,6 +2,17 @@ Revision history for DBD::Oracle
 
 {{$NEXT}}
 
+  Replace GIMME with GIMME_V, deprecated a long time agao (GH#209, Dean Hamstead)
+  Replace old k&r style definitions to quiet down compiler warnings (GH#210, Dean Hamstead)
+  Document NOT INSTANTIABLE object type limitation (GH#16, Dean Hamstead)
+  Use ldconfig to find ORACLE_HOME (Daniel Lewart)
+  Fix documentation (GH#115, Dean Hamstead)
+  Fix some typos (Dean Hamstead)
+
+1.91_3    2026-02-17
+
+  Improvements to t/92-segv-fork.t (Victor)
+  Fix for "Buffer is accessed out of bounds" from ccpcheck (GH#59, Victor)
   Test updates (GH#193, Victor)
   Fix up unit tests (Dean Hamstead)
   Remove outdated ifdefs (GH#186, H.Merijn Brand)
@@ -10,6 +21,7 @@ Revision history for DBD::Oracle
   Makefile.PL fix for missing Test::NoWarnings build requirement (GH#175, Wesley Hinds)
   don't care about ExtUtils::MakeMaker version number anymore (GH#184, Wesley Hinds)
   Makefile.PL: help to find linking libraries on Gentoo (GH#184, Marco Genasci)
+  Change every occurance of 'sv_setvpn' to 'sv_setvpn_mg' (GH#177, lzsiga)
 
 1.90    2024-04-16
 
