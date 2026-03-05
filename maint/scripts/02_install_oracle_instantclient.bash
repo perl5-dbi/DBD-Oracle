@@ -41,7 +41,8 @@ if [ -n "$ORACLEV" ]; then
         # Repo intended for Dockerfiles, see https://github.com/bumpx/oracle-instantclient/blob/master/README.md
         wget --quiet "https://github.com/bumpx/oracle-instantclient/raw/master/instantclient-$i-linux.x64-$LONGV$SUFFIX.zip"
     done
-    for i in `ls *zip`; do unzip $i; done
+
+    for i in `ls *zip`; do unzip $i -x "META-INF/*"; done
 
     # Needed for trixie and beyond
     if [ -f "/usr/lib/x86_64-linux-gnu/libaio.so.1t64" ]; then
@@ -106,6 +107,7 @@ if [ "$ORACLEV" = "11.2" ]; then
     echo "# Clean up"
     rm -rf instantclient_11_2
 fi
+
 if [ -n "$ORACLEV" ]; then
     echo "# Place paths in ENV"
     echo "export ORACLE_HOME=/usr/lib/oracle/$ORACLEV/client" >> /etc/profile.d/oracle.sh
