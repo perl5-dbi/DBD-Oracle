@@ -32,4 +32,4 @@ RUN apt-get update && apt-get install -y libaio-dev && \
 
 WORKDIR /usr/src/DBD-Oracle
 
-CMD /usr/src/DBD-Oracle/maint/docker-init.sh
+CMD ["/usr/src/DBD-Oracle/maint/docker-init.sh"]
