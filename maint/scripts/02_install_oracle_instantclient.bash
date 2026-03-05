@@ -17,10 +17,16 @@ fi
 if [ "$ORACLEV" == "19.6" ]; then
     export LONGV="19.6.0.0.0"
 fi
+if [ "$ORACLEV" == "21.21" ]; then
+    export LONGV="21.21.0.0.0"
+fi
+if [ "$ORACLEV" == "23.26" ]; then
+    export LONGV="23.26.1.0.0"
+fi
 
 SUFFIX=""
 if [ -n "$ORACLEV" ]; then
-    if [[ "$ORACLEV" == "18.3" || "$ORACLEV" == "18.5" || "$ORACLEV" == "19.6" ]]; then
+    if [[ "$ORACLEV" == "18.3" || "$ORACLEV" == "18.5" || "$ORACLEV" == "19.6" || "$ORACLEV" == "21.21" ]]; then
         SUFFIX="dbru"
     fi
     echo "Installing Oracle SDK $ORACLEV"
@@ -37,16 +43,25 @@ if [ -n "$ORACLEV" ]; then
     done
     for i in `ls *zip`; do unzip $i; done
 fi
-if [[ "$ORACLEV" == "12.2" || "$ORACLEV" == "18.3" || "$ORACLEV" == "18.5" || "$ORACLEV" == "19.6" ]]; then
+
+if [[ "$ORACLEV" == "12.2" || "$ORACLEV" == "18.3" || "$ORACLEV" == "18.5" || "$ORACLEV" == "19.6" || "$ORACLEV" == "21.21" || "$ORACLEV" == "23.26" ]]; then
     STUB=$(echo $ORACLEV | sed 's/\./_/')
-    MAJOR=$(echo $ORACLEV | sed 's/\.[0-9]//')
+    MAJOR=$(echo $ORACLEV | sed 's/\.[0-9][0-9]*//')
     echo "# Moving contents of instantclient-basic-linux.x64-$LONGV$SUFFIX.zip"
     find "instantclient_$STUB"
     mv "instantclient_$STUB/adrci"   "$ORACLEV/client/bin/"
     mv "instantclient_$STUB/genezi"  "$ORACLEV/client/bin/"
     mv "instantclient_$STUB/uidrvci" "$ORACLEV/client/bin/"
-    mv instantclient_$STUB/{libclntshcore.so.$MAJOR.1,libclntsh.so.$MAJOR.1,libipc1.so,libmql1.so,libnnz$MAJOR.so,libocci.so.$MAJOR.1,libociei.so,libocijdbc$MAJOR.so,liboramysql$MAJOR.so,ojdbc8.jar,xstreams.jar} $ORACLEV/client/lib/
-    if [ "$MAJOR" != "19" ]; then
+    mv instantclient_$STUB/{libclntshcore.so.$MAJOR.1,libclntsh.so.$MAJOR.1,libocci.so.$MAJOR.1,libociei.so,libocijdbc$MAJOR.so,ojdbc8.jar,xstreams.jar} $ORACLEV/client/lib/
+    if [ "$MAJOR" != "23" ]; then
+        mv instantclient_$STUB/libnnz$MAJOR.so $ORACLEV/client/lib/
+    else
+        mv instantclient_$STUB/libnnz.so $ORACLEV/client/lib/
+    fi
+    if [[ " 12 18 19 " == *" $MAJOR "* ]]; then
+        mv instantclient_$STUB/{libipc1.so,libmql1.so,liboramysql$MAJOR.so} $ORACLEV/client/lib/
+    fi
+    if [[ " 12 18 " == *" $MAJOR "* ]]; then
         mv "instantclient_$STUB/libons.so" "$ORACLEV/client/lib/"
     fi
     echo "# Moving contents of instantclient-sqlplus-linux.x64-$LONGV.zip"
