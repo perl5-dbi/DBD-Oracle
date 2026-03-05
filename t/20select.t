@@ -47,7 +47,7 @@ my $utf8_test = ( $] >= 5.006 )
   && client_ochar_is_utf8(
   )    # for correct output (utf8 bind vars should be fine regardless)
   && ( $dbh->ora_can_unicode() & 2 );
-diag('Including unicode data in test') if $utf8_test;
+note('Including unicode data in test') if $utf8_test;
 
 unless ( create_test_table( 'str CHAR(10)', 1 ) ) {
     BAIL_OUT("Unable to create test table ($DBI::errstr)\n");

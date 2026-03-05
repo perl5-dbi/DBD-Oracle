@@ -101,6 +101,7 @@ package DB::Fork;
 
 use strict;
 use warnings;
+use Carp;
 use Time::HiRes qw| usleep |;
 use DBI;
 use Test::More;
@@ -109,12 +110,13 @@ use Data::Dumper;
 use lib 't/lib';
 use DBDOracleTestLib qw/ db_handle /;
 
-
 our $VERSION;
 our $VERBOSE;
 our $ENABLED;
 our $CHILDREN;
 our $PARENT;
+our $SIG_PING;
+our $SIG_EXIT;
 
 our $ONETHR :shared;
 
@@ -123,6 +125,27 @@ BEGIN {
   $VERBOSE  = $main::VERBOSE || 0;
   $CHILDREN = [];
   $PARENT   = $$;
+  $SIG_PING = 'USR1';
+  $SIG_EXIT = 'USR2';
+
+  eval {
+    local $SIG{__WARN__} = sub
+    {
+      croak @_;
+    };
+
+    ## Not all OS's support USR1 / USR2
+    $SIG_PING = 'USR1';
+    $SIG_EXIT = 'USR2';
+    local $SIG{$SIG_PING} = sub { 1; };
+    local $SIG{$SIG_EXIT} = sub { 1; };
+  } or
+  do {
+    note "# Using HUP as alternative to unsupported USR1 (PING/ACK)\n";
+    note "# Using INT as alternative to unsupported USR2 (EXIT)\n";
+    $SIG_PING = 'HUP';
+    $SIG_EXIT = 'INT';
+  };
 
 # DBI->trace(9);
 }
@@ -204,7 +227,7 @@ sub ping
   my $olimit = 3 * scalar @ $CHILDREN;
   my $signaled = {};
 
-  local $SIG{USR1} = sub
+  local $SIG{$SIG_PING} = sub
   {
     return unless $child_pid;
     $signaled->{$child_pid} = $child_pid;
@@ -222,9 +245,9 @@ sub ping
 
     last unless $child_pid;
 
-    ## USR1 == ping
+    ## ping
     usleep 100000;
-    ok kill( 'USR1', $child_pid ), 'kill USR1(ping) ' . $child_pid;
+    ok kill( $SIG_PING, $child_pid ), sprintf 'kill %s %d', $SIG_PING, $child_pid;
 
     while ( $limit-- && ! exists $signaled->{ $child_pid } )
     {
@@ -242,8 +265,8 @@ QUEUE_BACKEND:
   my $do_ping;
   my $do_exit;
 
-  sub _USER1 { printf "# USR1=PING on-child=%d received\n", $$; return ( $do_ping = 1 ); }
-  sub _USER2 { printf "# USR2=EXIT on-child=%d received\n", $$; return ( $do_exit = 1 ); }
+  sub _USER1 { printf "# %s=PING on-child=%d received\n", $SIG_PING, $$; return ( $do_ping = 1 ); }
+  sub _USER2 { printf "# %s=EXIT on-child=%d received\n", $SIG_EXIT, $$; return ( $do_exit = 1 ); }
 
   sub _FORK_WORKER
   {
@@ -251,8 +274,8 @@ QUEUE_BACKEND:
 
     printf "# PID=%d (START)\n", $$;
 
-    local $SIG{USR1} = \&_USER1;
-    local $SIG{USR2} = \&_USER2;
+    local $SIG{$SIG_PING} = \&_USER1;
+    local $SIG{$SIG_EXIT} = \&_USER2;
 
     BUSY:
     while (1)
@@ -262,7 +285,8 @@ QUEUE_BACKEND:
       {
         printf "# pid=%s PING received (hold on, this is going to be a bumpy ride!)\n", $$;
         _connect();
-        printf "# PARENT=%s CHILD=%d %s=kill USR1\n", $PARENT, $$, kill( 'USR1', $PARENT );
+        ## AKA PING-ACK
+        printf "# PARENT=%s CHILD=%d %s=kill %s\n", $PARENT, $$, kill( $SIG_PING, $PARENT ), $SIG_PING;
         $do_ping = 0;
         next;
       }
