@@ -42,6 +42,11 @@ if [ -n "$ORACLEV" ]; then
         wget --quiet "https://github.com/bumpx/oracle-instantclient/raw/master/instantclient-$i-linux.x64-$LONGV$SUFFIX.zip"
     done
     for i in `ls *zip`; do unzip $i; done
+
+    # Needed for trixie and beyond
+    if [ -f "/usr/lib/x86_64-linux-gnu/libaio.so.1t64" ]; then
+        ln -s /usr/lib/x86_64-linux-gnu/libaio.so.1t64 /usr/lib/oracle/$ORACLEV/client/lib/libaio.so.1
+    fi
 fi
 
 if [[ "$ORACLEV" == "12.2" || "$ORACLEV" == "18.3" || "$ORACLEV" == "18.5" || "$ORACLEV" == "19.6" || "$ORACLEV" == "21.21" || "$ORACLEV" == "23.26" ]]; then
