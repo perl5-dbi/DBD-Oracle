@@ -1,4 +1,4 @@
-FROM perl:5.38.5-threaded-bookworm
+FROM perl:5.42.0-threaded-trixie
 
 # This will install Oracle XE database and the Oracle SDK to make developing easier
 # It leans on the same scripts used by travis, so they can be tweaked here too
@@ -15,7 +15,7 @@ FROM perl:5.38.5-threaded-bookworm
 # Adjust the two variables below to set the Oracle XE server version and client version
 
 ENV ORACLEDBV=11.2 \
-    ORACLEV=21.21
+    ORACLEV=23.26
 
 # These are used by DBD::Oracle unit tests
 ENV ORACLE_USERID=kermit/foobar \
