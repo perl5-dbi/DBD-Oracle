@@ -29,6 +29,11 @@ install_11_2() {
     echo -e "pga_aggregate_target=200540160\nsga_target=601620480" >> /u01/app/oracle/product/11.2.0/xe/config/scripts/init.ora
     echo -e "pga_aggregate_target=200540160\nsga_target=601620480" >> /u01/app/oracle/product/11.2.0/xe/config/scripts/initXETemp.ora
 
+    # Needed for trixie and beyond
+    if [ -f "/usr/lib/x86_64-linux-gnu/libaio.so.1t64" ]; then
+        ln -s /usr/lib/x86_64-linux-gnu/libaio.so.1t64 /u01/app/oracle/product/11.2.0/xe/lib/libaio.so.1
+    fi
+
     # Now configure Oracle XE
     printf 8080\\n1521\\nadminpass\\nadminpass\\ny\\n | /etc/init.d/oracle-xe configure
 
