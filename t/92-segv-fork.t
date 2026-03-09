@@ -155,9 +155,15 @@ FORK_SEGV:
 
   # note Dumper($Child::Queue::WORKSET);
 
+  my $deadline = Time::HiRes::time() + 300;
   while ( $queue->isBusy )
   {
+    if ( Time::HiRes::time() > $deadline )
+    {
+      abort('Queue timed out after 300 seconds - possible freeze (gh#212)');
+    }
     usleep(50000);
+    $queue->reap;
     $queue->run if $queue->hasSlots && $queue->size;
     usleep(15000);
   }
@@ -194,21 +200,24 @@ our $WORKSET;
 
 sub _SIG_CHLD
 {
-  my $pid = waitpid(-1, WNOHANG);
-  my $code = $? >> 8;
-
-  return unless $pid > 0;
-
-  if ( exists $WORKSET->{$pid} )
+  # gh#212 - Must loop: POSIX signals coalesce, so a single SIGCHLD may
+  # represent multiple exited children.  Without the loop the unreapped
+  # children stay in $WORKSET and the main loop spins forever.
+  while ((my $pid = waitpid(-1, WNOHANG)) > 0)
   {
-    my $child = delete $WORKSET->{$pid};
-    my $results = $child->finish( $code );
-    printf "# Child %d finished with code %d\n", $pid, $results->{CODE};
-    print Dumper($results);
-  }
-  else
-  {
-    printf "# Child %d finished but not in workset", $pid;
+    my $code = $? >> 8;
+
+    if ( exists $WORKSET->{$pid} )
+    {
+      my $child = delete $WORKSET->{$pid};
+      my $results = $child->finish( $code );
+      printf "# Child %d finished with code %d\n", $pid, $results->{CODE};
+      print Dumper($results);
+    }
+    else
+    {
+      printf "# Child %d finished but not in workset\n", $pid;
+    }
   }
 }
 
@@ -237,6 +246,7 @@ sub size      { return scalar @ $QUEUE }
 sub running   { return scalar keys % $WORKSET }
 sub isFull    { return $_[0]->running >= $_[0]->depth }
 sub hasSlots  { return ! $_[0]->isFull }
+sub reap      { _SIG_CHLD() }  # defensive: poll for exited children (gh#212)
 
 sub do_connect
 {
