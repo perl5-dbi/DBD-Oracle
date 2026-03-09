@@ -2515,6 +2515,16 @@ dbd_rebind_ph_char(imp_sth_t *imp_sth, phs_t *phs)
 			}
 		}
 
+		/* Clear stale SvCUR for undef inout params after SvGROW.
+		   SvGROW does not reset SvCUR, so after undef of a previously
+		   used SV, SvCUR may retain a stale value from prior content.
+		   This prevents the UNTOUCHED heuristic in dbd_phs_sv_complete
+		   from using a meaningless SvCUR as the output length.
+		   See https://github.com/perl5-dbi/DBD-Oracle/issues/216 */
+		if (!SvOK(phs->sv) && SvTYPE(phs->sv) >= SVt_PV) {
+			SvCUR_set(phs->sv, 0);
+		}
+
 	}
 
 	/* At this point phs->sv must be at least a PV with a valid buffer,	*/
@@ -3241,11 +3251,16 @@ dbd_phs_sv_complete(imp_sth_t *imp_sth, phs_t *phs, SV *sv, I32 debug)
 
 	if (phs->indp == 0) {					/* is okay	  */
 
-		if (phs->is_inout && phs->alen == SvLEN(sv)) {
+		if (phs->is_inout && phs->alen == SvLEN(sv) && SvPOK(sv)) {
 
 			/* if the placeholder has not been assigned to then phs->alen */
 			/* is left untouched: still set to SvLEN(sv). If we use that  */
 			/* then we'll get garbage bytes beyond the original contents. */
+			/* Only apply this when SvPOK is set, indicating the SV had   */
+			/* valid string content before execute. For undef SVs used as */
+			/* output-only params (SvPOK off), Oracle always writes data   */
+			/* when indp==0, so we trust phs->alen.                       */
+			/* See https://github.com/perl5-dbi/DBD-Oracle/issues/216     */
 			phs->alen = SvCUR(sv);
 			note = " UNTOUCHED?";
 		}
