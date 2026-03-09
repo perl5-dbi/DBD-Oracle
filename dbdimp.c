@@ -2743,7 +2743,13 @@ pp_exec_rset(SV *sth, imp_sth_t *imp_sth, phs_t *phs, int pre_exec)
                 return 0;
             }
             phs->desc_h = NULL;
-            phs->sv = newSV(0);                 /* undef */
+            /* Set the user's bound variable to undef rather than replacing
+               phs->sv pointer. Replacing the pointer would leak the old SV's
+               refcount and break the inout binding (subsequent executes would
+               write into an orphaned SV instead of the user's variable).
+               See RT 82663. */
+            if (phs->sv && phs->sv != &PL_sv_undef)
+                (void)SvOK_off(phs->sv);
             return 1;
         }
 
