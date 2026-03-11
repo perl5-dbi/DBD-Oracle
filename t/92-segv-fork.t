@@ -19,6 +19,12 @@ if ( $^O ne 'linux' ) {
   exit 0;
 }
 
+# Only run this test on Perl 5.42 or later
+if ( $] < 5.042 ) {
+  plan skip_all => "92-segv-fork.t: skipping - test requires Perl 5.42 or later (running on $])\n";
+  exit 0;
+}
+
 use Data::Dumper;
 
 local $Data::Dumper::Indent = 1;
