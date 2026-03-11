@@ -27,7 +27,7 @@ package DBD::Oracle;
             ORA_VARCHAR2 ORA_STRING ORA_NUMBER ORA_LONG ORA_ROWID ORA_DATE
             ORA_RAW ORA_LONGRAW ORA_CHAR ORA_CHARZ ORA_MLSLABEL ORA_XMLTYPE
             ORA_CLOB ORA_BLOB ORA_RSET ORA_VARCHAR2_TABLE ORA_NUMBER_TABLE
-            SQLT_INT SQLT_FLT ORA_OCI SQLT_CHR SQLT_BIN
+            SQLT_INT SQLT_FLT ORA_OCI SQLT_CHR SQLT_BIN ORA_BOOLEAN
         ) ],
       ora_session_modes => [ qw( ORA_SYSDBA ORA_SYSOPER ORA_SYSASM ORA_SYSBACKUP ORA_SYSDG ORA_SYSKM) ],
       ora_fetch_orient  => [ qw( OCI_FETCH_NEXT OCI_FETCH_CURRENT OCI_FETCH_FIRST
@@ -1294,7 +1294,7 @@ ORA_SYSDBA ORA_SYSOPER ORA_SYSASM ORA_SYSBACKUP ORA_SYSDG ORA_SYSKM
   ORA_VARCHAR2 ORA_STRING ORA_NUMBER ORA_LONG ORA_ROWID ORA_DATE ORA_RAW
   ORA_LONGRAW ORA_CHAR ORA_CHARZ ORA_MLSLABEL ORA_XMLTYPE ORA_CLOB ORA_BLOB
   ORA_RSET ORA_VARCHAR2_TABLE ORA_NUMBER_TABLE SQLT_INT SQLT_FLT ORA_OCI
-  SQLT_CHR SQLT_BIN
+  SQLT_CHR SQLT_BIN ORA_BOOLEAN
 
 =item SQLCS_IMPLICIT
 
@@ -2953,7 +2953,7 @@ The current list of Oracle data types exported is:
   ORA_VARCHAR2 ORA_STRING ORA_NUMBER ORA_LONG ORA_ROWID ORA_DATE ORA_RAW
   ORA_LONGRAW ORA_CHAR ORA_CHARZ ORA_MLSLABEL ORA_XMLTYPE ORA_CLOB ORA_BLOB
   ORA_RSET ORA_VARCHAR2_TABLE ORA_NUMBER_TABLE SQLT_INT SQLT_FLT ORA_OCI
-  SQLT_CHR SQLT_BIN
+  SQLT_CHR SQLT_BIN ORA_BOOLEAN
 
 Data types are "sticky," in that once a data type is set to a certain placeholder,
 it will remain for that placeholder, unless it is explicitly set to something
@@ -3024,6 +3024,15 @@ Additional values when DBD::Oracle was built using OCI 8 and later:
 Additional values when DBD::Oracle was built using OCI 9.2 and later:
 
   SQLT_CHR, SQLT_BIN
+
+Additional values when connecting to Oracle Database 23ai or later:
+
+  ORA_BOOLEAN
+
+C<ORA_BOOLEAN> (value 252) corresponds to the Oracle 23ai native BOOLEAN SQL
+type (Oracle internal type C<SQLT_BOL>). When a column of this type is selected,
+the C<< $sth->{TYPE} >> attribute returns C<SQL_BOOLEAN> (16), consistent with
+the DBI standard. Fetched values are returned as C<0> (false) or C<1> (true).
 
 See L</Binding Cursors> for the correct way to use ORA_RSET.
 
