@@ -3820,6 +3820,11 @@ dbd_describe(SV *h, imp_sth_t *imp_sth)
             fbh->disize = 75;		/* XXX */
             break;
 
+          case	252:				  /* BOOLEAN (Oracle 23ai, SQLT_BOL) */
+            fbh->disize = 6;		/* allow for "FALSE" (5 chars) when fetched as string */
+            fbh->prec   = 1;
+            break;
+
           default:
 			/* XXX unhandled type may lead to errors or worse */
             fbh->ftype  = fbh->dbtype;
