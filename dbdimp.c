@@ -29,6 +29,11 @@
 #define SvPOK_only_UTF8(sv) SvPOK_only(sv)
 #endif
 
+/* SQL_BOOLEAN (= 16) may not be defined in older DBI installations */
+#ifndef SQL_BOOLEAN
+#define SQL_BOOLEAN 16
+#endif
+
 DBISTATE_DECLARE;
 
 int ora_fetchtest;         /* internal test only, not thread safe */
@@ -327,6 +332,7 @@ oratype_bind_ok(int dbtype) /* It's a type we support for placeholders */
 	case 116:	/* SQLT_RSET	OCI 8 cursor variable	*/
  	case ORA_VARCHAR2_TABLE: /* 201 */
 	case ORA_NUMBER_TABLE:	/* 202 */
+	case 252:	/* ORA_BOOLEAN / SQLT_BOL (Oracle 23ai) */
 	case ORA_XMLTYPE:		/* SQLT_NTY   must be careful here as its value (108) is the same for an embedded object Well really only XML clobs not embedded objects  */
 	return 1;
 	}
@@ -1522,6 +1528,9 @@ ora_sql_type(imp_sth_t *imp_sth, char *name, int sql_type)
 
 	case SQL_BLOB:
 	return 113;	/* Oracle BLOB		*/
+
+	case SQL_BOOLEAN:
+	return 252;	/* Oracle 23ai BOOLEAN (SQLT_BOL) */
 
 	case SQL_DATE:
 	case SQL_TIME:
@@ -4447,6 +4456,7 @@ ora2sql_type(imp_fbh_t* fbh) {
 	case SQLT_AFC:  sql_fbh.dbtype = SQL_CHAR;		  break; /* Ansi fixed char */
 	case SQLT_CLOB: sql_fbh.dbtype = SQL_CLOB;		break;
 	case SQLT_BLOB: sql_fbh.dbtype = SQL_BLOB;		break;
+	case 252:       sql_fbh.dbtype = SQL_BOOLEAN;		break; /* Oracle 23ai BOOLEAN (SQLT_BOL) */
 #ifdef SQLT_TIMESTAMP_TZ
 	case SQLT_DATE:		sql_fbh.dbtype = SQL_DATE;			break;
 	case SQLT_TIME:		sql_fbh.dbtype = SQL_TIME;			break;
