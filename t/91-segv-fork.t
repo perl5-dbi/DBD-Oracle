@@ -4,6 +4,13 @@ use strict;
 use warnings;
 use Time::HiRes qw| usleep |;
 use Test::More;
+
+# Only run this test on Linux
+if ( $^O ne 'linux' ) {
+  plan skip_all => "91-segv-fork.t: skipping - test only runs on Linux (running on $^O)";
+  exit 0;
+}
+
 use Data::Dumper;
 
 local $Data::Dumper::Indent = 1;
@@ -172,7 +179,7 @@ sub disable
     {
       my $child_pid = shift @ $CHILDREN;
 
-      is kill( 'USR2', $child_pid ), 1,  'kill USR2 ' . $child_pid;
+      is kill( $SIG_EXIT, $child_pid ), 1,  'kill ' . $SIG_EXIT . ' ' . $child_pid;
       is waitpid( $child_pid, 0), $child_pid, 'wait ' . $child_pid . ' 0';
     }
 
