@@ -8,7 +8,7 @@ use DBDOracleTestLib qw/ oracle_test_dsn client_ochar_is_utf8 table drop_table
 db_handle /;
 
 use Test::More;
-use DBI;
+use DBI qw(:sql_types);
 use DBD::Oracle qw(:ora_types ORA_OCI);
 use Data::Dumper;
 use Math::BigInt;
@@ -26,6 +26,10 @@ my $sz = 8;
 my $tests         = 3;
 my $tests_per_set = 11;
 $tests += @test_sets * $tests_per_set;
+
+# Oracle 23ai BOOLEAN type tests (skipped on older versions)
+my $boolean_tests = 5;
+$tests += $boolean_tests;
 
 my $t      = 0;
 my $failed = 0;
@@ -71,6 +75,33 @@ SKIP: {
     );
     ok( ( defined $data and $data eq '+000000001 07:00:00.000000000' ),
         'ds_interval' );
+}
+
+SKIP: {
+    skip 'Oracle BOOLEAN type requires Oracle 23 or higher', $boolean_tests
+        if $ora_server_version->[0] < 23;
+
+    # Constant sanity check
+    is( ORA_BOOLEAN(), 252, 'ORA_BOOLEAN constant is 252 (SQLT_BOL)' );
+
+    # $sth->{TYPE} should report SQL_BOOLEAN (16) for boolean columns
+    my $bool_sth = $dbh->prepare(
+        'SELECT to_boolean(0) AS bfalse, to_boolean(1) AS btrue FROM dual'
+    );
+    ok( $bool_sth->execute, 'execute BOOLEAN select' );
+
+    is_deeply(
+        $bool_sth->{TYPE},
+        [ SQL_BOOLEAN, SQL_BOOLEAN ],
+        '$sth->{TYPE} reports SQL_BOOLEAN (16) for both BOOLEAN columns'
+    );
+
+    # Fetched values: OCI may convert to "0"/"1" or "FALSE"/"TRUE"
+    my $row = $bool_sth->fetchrow_arrayref;
+    ok( defined $row->[0] && $row->[0] =~ /^(0|FALSE)$/i,
+        "BOOLEAN FALSE fetches as false value (got: '$row->[0]')" );
+    ok( defined $row->[1] && $row->[1] =~ /^(1|TRUE)$/i,
+        "BOOLEAN TRUE fetches as true value (got: '$row->[1]')" );
 }
 
 # FIXME - maybe remove this
