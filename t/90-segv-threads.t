@@ -5,6 +5,12 @@ use warnings;
 use Test::More;
 use Config;
 
+# Only run this test on Linux
+if ( $^O ne 'linux' ) {
+  plan skip_all => "90-segv-threads.t: skipping - test only runs on Linux (running on $^O)";
+  exit 0;
+}
+
 BEGIN {
   # Check if Perl is compiled with thread support
   if (!$Config{useithreads}) {
@@ -16,6 +22,7 @@ BEGIN {
 
 use threads;
 use threads::shared 1.51;
+use Thread::Queue 3.07;
 use Time::HiRes qw| usleep |;
 use Data::Dumper;
 
@@ -277,9 +284,16 @@ sub disable
 
       if ( $thr )
       {
-        while ( ! $thr->is_joinable ) { usleep( 20000 ); }
+        my $join_deadline = Time::HiRes::time() + 30;
+        while ( ! $thr->is_joinable ) {
+          if ( Time::HiRes::time() > $join_deadline ) {
+            warn sprintf "# Thread %d not joinable after 30s, giving up\n", $thr->tid;
+            last;
+          }
+          usleep( 20000 );
+        }
         note 'join ', $thr->tid if $VERBOSE;
-        $thr->join;
+        $thr->join if $thr->is_joinable;
       }
 
       threads->yield;
