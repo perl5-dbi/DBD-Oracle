@@ -508,7 +508,7 @@ SQL
         else {
                $SQL = <<'SQL';
     select * FROM (
-        select /*+ CHOOSE */
+        select
         NULL TABLE_CAT
          , t.OWNER      TABLE_SCHEM
          , t.TABLE_NAME TABLE_NAME
@@ -562,8 +562,7 @@ SQL
 SELECT *
   FROM
 (
-  SELECT /*+ CHOOSE */
-         NULL              TABLE_CAT
+  SELECT NULL              TABLE_CAT
        , c.OWNER           TABLE_SCHEM
        , c.TABLE_NAME      TABLE_NAME
        , c.COLUMN_NAME     COLUMN_NAME
@@ -595,8 +594,7 @@ SQL
 SELECT *
   FROM
 (
-  SELECT /*+ CHOOSE */
-         to_char( NULL )    UK_TABLE_CAT
+  SELECT to_char( NULL )    UK_TABLE_CAT
        , uk.OWNER           UK_TABLE_SCHEM
        , uk.TABLE_NAME      UK_TABLE_NAME
        , uc.COLUMN_NAME     UK_COLUMN_NAME
@@ -659,7 +657,8 @@ CASE WHEN tc.DATA_TYPE LIKE 'TIMESTAMP% WITH% TIME ZONE' THEN 95
 ELSE
 SQL
             $typecaseend = 'END';
-        } elsif ($ora_server_version->[0] >= 11) {
+        }
+        if ($ora_server_version->[0] >= 11) {
             # rt91217 CHOOSE hint deprecated
             $choose = '';
         }
