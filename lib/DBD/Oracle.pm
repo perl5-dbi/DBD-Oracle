@@ -1179,8 +1179,6 @@ SQL
 
         $$hash_of_arrays{$p_id} = $value_array;
         return ora_bind_param_inout_array($sth, $p_id, $value_array,$maxlen, $attr);
-        1;
-
     }
 
 
