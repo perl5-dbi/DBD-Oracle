@@ -581,7 +581,6 @@ SELECT *
    AND TABLE_NAME  = ?
  ORDER BY TABLE_SCHEM, TABLE_NAME, KEY_SEQ
 SQL
-#warn "@_\n$Sql ($schema, $table)";
         my $sth = $dbh->prepare($SQL) or return undef;
         $sth->execute($schema, $table) or return undef;
         $sth;
@@ -1097,7 +1096,7 @@ SQL
         my $sth = $dbh->prepare_cached(q{
             begin dbms_msgpipe.acknowledge(:returnpipe, :errormsg, :param); end;}) or return;
         $sth->bind_param_inout(':returnpipe', \$msg->[0],   30);
-        $sth->bind_param_inout(':proc',       \$msg->[1],   30);
+        $sth->bind_param_inout(':errormsg',   \$msg->[1],   30);
         $sth->bind_param_inout(':param',      \$msg->[2], 4000);
         $sth->execute or return undef;
         return 1;
