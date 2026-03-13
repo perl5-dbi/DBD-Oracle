@@ -23,6 +23,7 @@ jobs:
     env:
       ORACLEV: latest
       ORACLE_USERID: kermit/foobar
+      ORACLE_USERID_2: mspiggy/barfoo
       ORACLE_DSN: 'dbi:Oracle://oracle:1521/FREEPDB1'
     services:
       # Oracle service (label used to access the service container)
@@ -49,6 +50,13 @@ jobs:
       - run: apt-get install -y libaio1 libaio-dev bc sudo alien
       - run: sudo -E maint/scripts/03_install_oracle_instantclient_rpm.bash
       - run: . /etc/profile
+      - run: |-
+          # Same as createAppUser in oracle image
+          sqlplus -L -S SYSTEM/adminpass@oracle:1521 <<EOF
+            ALTER SESSION SET CONTAINER=FREEPDB1;
+            CREATE USER mspiggy IDENTIFIED BY "barfoo" DEFAULT TABLESPACE USERS QUOTA UNLIMITED ON USERS;
+            GRANT DB_DEVELOPER_ROLE TO mspiggy;
+          EOF
       - run: perl -V
       - run: cpanm DBI # DBI must be installed before we can build a DBD.
       - run: cpanm --installdeps .
