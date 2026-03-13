@@ -304,10 +304,6 @@ package DBD::Oracle;
            $attr->{ora_events} = $ENV{ORA_EVENTS};
         }
 
-        if (exists $ENV{ORA_EVENTS}) {
-           $attr->{ora_events} = $ENV{ORA_EVENTS};
-        }
-
         # ORA8 does not like when "user/passwd" is used.
         # so, it makes sense to separate those. This was done
         # in XS, but there one didn't distinguish between
@@ -1939,8 +1935,37 @@ It is much better to use sessions-pooling activated with B<ora_drcp>.
 =head4 ora_events
 
 Set this attribute to C<1> to enable Oracle Fast Application Notification
-(FAN) in a new OCI environment. Can also be set via the C<ORA_EVENTS>
-environment variable.
+(FAN) in a new OCI environment. This sets the C<OCI_EVENTS> flag during
+environment initialization.
+
+Can also be set via the C<ORA_EVENTS> environment variable.
+
+  # Enable FAN via connect attribute
+  my $dbh = DBI->connect($dsn, $user, $passwd, {
+      ora_events => 1,
+  });
+
+  # Or via environment variable
+  $ENV{ORA_EVENTS} = 1;
+  my $dbh = DBI->connect($dsn, $user, $passwd);
+
+FAN enables the Oracle client to receive and process high availability
+events from an Oracle RAC cluster, such as node up/down notifications,
+service availability changes, and load balancing advisories.
+
+This is most useful in combination with C<ora_drcp> (Database Resident
+Connection Pooling), where FAN events allow the client to quickly detect
+and react to instance failures and rebalance connections:
+
+  my $dbh = DBI->connect($dsn, $user, $passwd, {
+      ora_events => 1,
+      ora_drcp   => 1,
+  });
+
+B<Note:> C<ora_events> is B<not> related to Oracle Database Change Notification
+(DCN/CQN). DCN is a separate feature for subscribing to notifications about
+data changes (INSERT/UPDATE/DELETE) in specific tables, which is not currently
+supported by DBD::Oracle.
 
 =head4 ora_charset, ora_ncharset
 
