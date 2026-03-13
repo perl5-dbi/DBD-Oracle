@@ -530,16 +530,15 @@ SQL
                       push @Where, "TABLE_NAME  LIKE '$TblVal' ESCAPE '\\'";
                }
                if ( defined $TypVal ) {
-                      my $table_type_list;
                       $TypVal =~ s/^\s+//;
                       $TypVal =~ s/\s+$//;
                       my @ttype_list = split (/\s*,\s*/, $TypVal);
-                      foreach my $table_type (@ttype_list) {
+                      for my $table_type (@ttype_list) {
                              if ($table_type !~ /^'.*'$/) {
-                                    $table_type = "'" . $table_type . "'";
+                                    $table_type = "'$table_type'";
                              }
-                             $table_type_list = join(", ", @ttype_list);
                       }
+                      my $table_type_list = join(', ', @ttype_list);
                       push @Where, "TABLE_TYPE IN ($table_type_list)";
                }
                $SQL .= ' WHERE ' . join("\n   AND ", @Where ) . "\n" if @Where;
