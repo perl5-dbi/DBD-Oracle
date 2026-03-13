@@ -1429,6 +1429,85 @@ the query.
 With local queries, you can change the time zone for a particular user by simply changing the setting of "TZ". To check the current setting,
 issue the UNIX "date" command.
 
+=head3 Connecting with TLS/SSL (TCPS)
+
+DBD::Oracle connects to Oracle via the Oracle Call Interface (OCI) client
+libraries, so TLS/SSL encryption is configured at the Oracle Net level, not
+within DBD::Oracle itself. Once the Oracle client is properly configured,
+encrypted connections work transparently.
+
+Oracle uses the protocol name B<TCPS> (TCP with SSL) for TLS-encrypted
+connections. To use it, you need:
+
+=over 4
+
+=item 1. An Oracle Wallet or system certificates
+
+Oracle traditionally uses its own wallet format for storing certificates and
+keys. Create a wallet with C<orapki> or Oracle Wallet Manager, or configure
+the client to use system certificates (supported in Oracle 19c+).
+
+=item 2. Client-side F<sqlnet.ora> configuration
+
+Point the client to the wallet location and specify the TLS settings:
+
+  # sqlnet.ora
+  WALLET_LOCATION =
+    (SOURCE =
+      (METHOD = FILE)
+      (METHOD_DATA =
+        (DIRECTORY = /path/to/wallet)
+      )
+    )
+
+  SSL_CLIENT_AUTHENTICATION = FALSE
+  SSL_VERSION = 1.2
+
+For Oracle 19c+ using system certificates instead of a wallet:
+
+  # sqlnet.ora
+  WALLET_LOCATION =
+    (SOURCE =
+      (METHOD = FILE)
+      (METHOD_DATA =
+        (DIRECTORY = /etc/pki/tls)
+      )
+    )
+
+=item 3. A TNS entry or connect string using TCPS
+
+In F<tnsnames.ora>:
+
+  MYDB_SSL =
+    (DESCRIPTION =
+      (ADDRESS = (PROTOCOL = TCPS)(HOST = dbhost.example.com)(PORT = 2484))
+      (CONNECT_DATA = (SERVICE_NAME = ORCL))
+    )
+
+Then connect normally:
+
+  $dbh = DBI->connect('dbi:Oracle:MYDB_SSL', 'username', 'password');
+
+Or use an inline descriptor:
+
+  $dbh = DBI->connect('dbi:Oracle:', q{scott/tiger@(DESCRIPTION=
+    (ADDRESS=(PROTOCOL=TCPS)(HOST=dbhost.example.com)(PORT=2484))
+    (CONNECT_DATA=(SERVICE_NAME=ORCL)))}, "");
+
+=back
+
+The default port for TCPS is B<2484> (versus 1521 for unencrypted TCP).
+
+B<Note:> The C<TNS_ADMIN> environment variable (or the F<$ORACLE_HOME/network/admin>
+directory) must point to the directory containing your F<sqlnet.ora> and
+F<tnsnames.ora> files. You can set it before connecting:
+
+  $ENV{TNS_ADMIN} = '/path/to/tns_admin';
+  $dbh = DBI->connect('dbi:Oracle:MYDB_SSL', 'username', 'password');
+
+For more details on configuring Oracle Net encryption, see the Oracle Database
+documentation on "Configuring Transport Layer Security Authentication".
+
 =head3 Oracle DRCP
 
 DBD::Oracle supports DRCP (Database Resident Connection Pool) so
