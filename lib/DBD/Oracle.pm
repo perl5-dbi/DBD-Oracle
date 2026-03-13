@@ -368,6 +368,8 @@ package DBD::Oracle;
     use strict;
     use DBI qw(:sql_types);
 
+    our $VERSION_RE = qr/(?:^|\s)(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)(?:\s|$)/;
+
     sub prepare {
         my($dbh, $statement, @attribs)= @_;
 
@@ -1110,12 +1112,11 @@ SELECT banner
   WHERE banner LIKE ? OR banner LIKE ?
 SQL
         if (defined $banner) {
-            my @version = $banner =~ /(?:^|\s)(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)(?:\s|$)/;
+            my @version = $banner =~ $VERSION_RE;
             $dbh->{ora_server_version} = \@version if @version;
         }
 
-        # TODO looks like a bug that we don't return
-        # $dbh->{ora_server_version} here
+        return $dbh->{ora_server_version};
     }
 
     sub ora_nls_parameters {

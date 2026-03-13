@@ -1021,6 +1021,9 @@ dbd_db_STORE_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv, SV *valuesv)
 	else if (kl==11 && strEQ(key, "ora_objects")) {
 		ora_objects = SvIV (valuesv);
 	}
+	else if (kl==18 && strEQ(key, "ora_server_version")) {
+		/* allow Perl-level caching of server version arrayref */
+	}
 	else if (kl==11 && (strEQ(key, "ora_verbose") || strEQ(key, "dbd_verbose"))) {
 		dbd_verbose = SvIV (valuesv);
 	}
@@ -1194,6 +1197,13 @@ dbd_db_FETCH_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv)
 	}
 	else if (kl==11 && strEQ(key, "ora_objects")) {
 		retsv = newSViv (ora_objects);
+	}
+	else if (kl==18 && strEQ(key, "ora_server_version")) {
+		/* Return value cached by Perl-level ora_server_version() */
+		SV **svp = hv_fetch((HV*)SvRV(dbh), key, kl, 0);
+		if (svp && *svp && SvOK(*svp)) {
+			retsv = newSVsv(*svp);
+		}
 	}
 	else if (kl==11 && (strEQ(key, "ora_verbose") || strEQ(key, "dbd_verbose"))) {
 		retsv = newSViv (dbd_verbose);
