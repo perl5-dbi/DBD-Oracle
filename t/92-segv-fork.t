@@ -83,8 +83,9 @@ sub bark_thread_count
 ORACLE_READY:
 {
   section 'ORACLE - READY';
-  bark_thread_count(1);
-  my $dbh = Child::Queue->do_connect( { PrintError => 0 } ) or plan skip_all => "Unable to connect to oracle\n";
+  my $dbh = Child::Queue->do_connect( { PrintError => 0 } )
+    or plan skip_all => "Unable to connect to oracle\n";
+  subtest 'Thread Count' => \&bark_thread_count, 1;
   if ( $dbh )
   {
     is $dbh->do(qq|ALTER SESSION SET NLS_DATE_FORMAT         = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_DATE_FORMAT';
