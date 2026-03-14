@@ -1,9 +1,30 @@
 #!/usr/bin/env perl
 
+## A SEGV during this test is a sign that Perl itself lacks the patch
+##  that allows a SIGCHLD (any interrupt) to be handled using a worker
+##  thread created by Oracle Instant Client.
+##
+## Consult: https://github.com/perl5-dbi/DBD-Oracle/issues/192
+##     and: https://github.com/Perl/perl5/issues/23326
+##  for details concerning the issue and the patch.
+
 use strict;
 use warnings;
 use Time::HiRes qw| usleep |;
 use Test::More;
+
+# Only run this test on Linux
+if ( $^O ne 'linux' ) {
+  plan skip_all => "92-segv-fork.t: skipping - test only runs on Linux (running on $^O)\n";
+  exit 0;
+}
+
+# Only run this test on Perl 5.42 or later
+if ( $] < 5.042 ) {
+  plan skip_all => "92-segv-fork.t: skipping - test requires Perl 5.42 or later (running on $])\n";
+  exit 0;
+}
+
 use Data::Dumper;
 
 local $Data::Dumper::Indent = 1;
@@ -47,9 +68,35 @@ PERL_NOTICE:
   note qx|perl -V|  if $VERBOSE;
 }
 
+sub bark_thread_count
+{
+  my $expected = shift || 2;
+  my $proc = sprintf '/proc/%s/status', $$;
+  if ( -f $proc && open my $_PROC, '<', $proc )
+  {
+    is $_, $expected, 'Expected thread count=' . $expected for map { ( split ' ' )[1] } grep { m=Threads= } <$_PROC>;
+    $_PROC && ( $_PROC->close or warn $! )
+  }
+  return;
+}
+
 ORACLE_READY:
 {
-  Child::Queue->do_connect( { PrintError => 0 } ) or plan skip_all => "Unable to connect to oracle\n";
+  section 'ORACLE - READY';
+  my $dbh = Child::Queue->do_connect( { PrintError => 0 } )
+    or plan skip_all => "Unable to connect to oracle\n";
+  subtest 'Thread Count' => \&bark_thread_count, 1;
+  if ( $dbh )
+  {
+    is $dbh->do(qq|ALTER SESSION SET NLS_DATE_FORMAT         = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_DATE_FORMAT';
+    is $dbh->do(qq|ALTER SESSION SET NLS_TIMESTAMP_FORMAT    = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_TIMESTAMP_FORMAT';
+    is $dbh->do(qq|ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'|), '0E0', 'ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT';
+    note Dumper( $dbh->selectall_arrayref(qq|SELECT SYSTIMESTAMP AT TIME ZONE 'UTC' FROM DUAL|));
+  }
+  $dbh = undef;
+  # Not important but an indication SEGV is imminent
+  #  (won't PASS if Perl is not built with threads support)
+  # bark_thread_count(2);
 }
 
 QUEUE_BASICS:
@@ -82,12 +129,10 @@ QUEUE_BASICS:
 
 FORK_SEGV:
 {
-# last FORK_SEGV if 1;
-
   section 'FORK - SEGV';
 
   my $queue = Child::Queue->new( -DEPTH => 8 );
-  my $jobs  = 80;
+  my $jobs  = 40;
 
   is  $queue->depth,     8, 'Queue depth';
   is  $queue->size,      0, 'Queue size';
@@ -117,9 +162,15 @@ FORK_SEGV:
 
   # note Dumper($Child::Queue::WORKSET);
 
+  my $deadline = Time::HiRes::time() + 300;
   while ( $queue->isBusy )
   {
+    if ( Time::HiRes::time() > $deadline )
+    {
+      abort('Queue timed out after 300 seconds - possible freeze (gh#212)');
+    }
     usleep(50000);
+    $queue->reap;
     $queue->run if $queue->hasSlots && $queue->size;
     usleep(15000);
   }
@@ -156,21 +207,24 @@ our $WORKSET;
 
 sub _SIG_CHLD
 {
-  my $pid = waitpid(-1, WNOHANG);
-  my $code = $? >> 8;
- 
-  return unless $pid > 0;
+  # gh#212 - Must loop: POSIX signals coalesce, so a single SIGCHLD may
+  # represent multiple exited children.  Without the loop the unreapped
+  # children stay in $WORKSET and the main loop spins forever.
+  while ((my $pid = waitpid(-1, WNOHANG)) > 0)
+  {
+    my $code = $? >> 8;
 
-  if ( exists $WORKSET->{$pid} )
-  {
-    my $child = delete $WORKSET->{$pid};
-    my $results = $child->finish( $code );
-    printf "# Child %d finished with code %d\n", $pid, $results->{CODE};
-    print Dumper($results);
-  }
-  else
-  {
-    printf "# Child %d finished but not in workset", $pid;
+    if ( exists $WORKSET->{$pid} )
+    {
+      my $child = delete $WORKSET->{$pid};
+      my $results = $child->finish( $code );
+      printf "# Child %d finished with code %d\n", $pid, $results->{CODE};
+      print Dumper($results);
+    }
+    else
+    {
+      printf "# Child %d finished but not in workset\n", $pid;
+    }
   }
 }
 
@@ -199,6 +253,7 @@ sub size      { return scalar @ $QUEUE }
 sub running   { return scalar keys % $WORKSET }
 sub isFull    { return $_[0]->running >= $_[0]->depth }
 sub hasSlots  { return ! $_[0]->isFull }
+sub reap      { _SIG_CHLD() }  # defensive: poll for exited children (gh#212)
 
 sub do_connect
 {

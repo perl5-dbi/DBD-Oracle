@@ -1021,6 +1021,9 @@ dbd_db_STORE_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv, SV *valuesv)
 	else if (kl==11 && strEQ(key, "ora_objects")) {
 		ora_objects = SvIV (valuesv);
 	}
+	else if (kl==18 && strEQ(key, "ora_server_version")) {
+		/* allow Perl-level caching of server version arrayref */
+	}
 	else if (kl==11 && (strEQ(key, "ora_verbose") || strEQ(key, "dbd_verbose"))) {
 		dbd_verbose = SvIV (valuesv);
 	}
@@ -1194,6 +1197,13 @@ dbd_db_FETCH_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv)
 	}
 	else if (kl==11 && strEQ(key, "ora_objects")) {
 		retsv = newSViv (ora_objects);
+	}
+	else if (kl==18 && strEQ(key, "ora_server_version")) {
+		/* Return value cached by Perl-level ora_server_version() */
+		SV **svp = hv_fetch((HV*)SvRV(dbh), key, kl, 0);
+		if (svp && *svp && SvOK(*svp)) {
+			retsv = newSVsv(*svp);
+		}
 	}
 	else if (kl==11 && (strEQ(key, "ora_verbose") || strEQ(key, "dbd_verbose"))) {
 		retsv = newSViv (dbd_verbose);
@@ -2515,6 +2525,16 @@ dbd_rebind_ph_char(imp_sth_t *imp_sth, phs_t *phs)
 			}
 		}
 
+		/* Clear stale SvCUR for undef inout params after SvGROW.
+		   SvGROW does not reset SvCUR, so after undef of a previously
+		   used SV, SvCUR may retain a stale value from prior content.
+		   This prevents the UNTOUCHED heuristic in dbd_phs_sv_complete
+		   from using a meaningless SvCUR as the output length.
+		   See https://github.com/perl5-dbi/DBD-Oracle/issues/216 */
+		if (!SvOK(phs->sv) && SvTYPE(phs->sv) >= SVt_PV) {
+			SvCUR_set(phs->sv, 0);
+		}
+
 	}
 
 	/* At this point phs->sv must be at least a PV with a valid buffer,	*/
@@ -3241,11 +3261,16 @@ dbd_phs_sv_complete(imp_sth_t *imp_sth, phs_t *phs, SV *sv, I32 debug)
 
 	if (phs->indp == 0) {					/* is okay	  */
 
-		if (phs->is_inout && phs->alen == SvLEN(sv)) {
+		if (phs->is_inout && phs->alen == SvLEN(sv) && SvPOK(sv)) {
 
 			/* if the placeholder has not been assigned to then phs->alen */
 			/* is left untouched: still set to SvLEN(sv). If we use that  */
 			/* then we'll get garbage bytes beyond the original contents. */
+			/* Only apply this when SvPOK is set, indicating the SV had   */
+			/* valid string content before execute. For undef SVs used as */
+			/* output-only params (SvPOK off), Oracle always writes data   */
+			/* when indp==0, so we trust phs->alen.                       */
+			/* See https://github.com/perl5-dbi/DBD-Oracle/issues/216     */
 			phs->alen = SvCUR(sv);
 			note = " UNTOUCHED?";
 		}
@@ -3520,13 +3545,7 @@ dbd_st_execute(SV *sth, imp_sth_t *imp_sth) /* <= -2:error, >=0:ok row count, (-
 }
 
 static int
-do_bind_array_exec(sth, imp_sth, phs,utf8,parma_index,tuples_utf8_av,tuples_status_av)
-	SV *sth;
-	imp_sth_t *imp_sth;
-	phs_t *phs;
-	int utf8;
-	AV *tuples_utf8_av,*tuples_status_av;
-	int parma_index;
+do_bind_array_exec(SV *sth, imp_sth_t *imp_sth, phs_t *phs, int utf8, int parma_index, AV *tuples_utf8_av, AV *tuples_status_av)
 	{
 	dTHX;
 	D_imp_dbh_from_sth;
@@ -3647,8 +3666,7 @@ do_bind_array_exec(sth, imp_sth, phs,utf8,parma_index,tuples_utf8_av,tuples_stat
 }
 
 static void
-init_bind_for_array_exec(phs)
-	phs_t *phs;
+init_bind_for_array_exec(phs_t *phs)
 {
 	dTHX;
 	if (phs->sv == &PL_sv_undef) { /* first bind for this placeholder  */
@@ -3664,14 +3682,7 @@ init_bind_for_array_exec(phs)
 }
 
 int
-ora_st_execute_array(sth, imp_sth, tuples, tuples_status, columns, exe_count, err_count)
-	SV *sth;
-	imp_sth_t *imp_sth;
-	SV *tuples;
-	SV *tuples_status;
-	SV *columns;
-	ub4 exe_count;
-	SV *err_count;
+ora_st_execute_array(SV *sth, imp_sth_t *imp_sth, SV *tuples, SV *tuples_status, SV *columns, ub4 exe_count, SV *err_count)
 {
 	dTHX;
 	dTHR;
@@ -3960,7 +3971,7 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field, long offset, long len, 
 	int ftype = fbh->ftype;
 
 	bufsv = SvRV(destrv);
-	sv_setpvn(bufsv,"",0);	/* ensure it's writable string	*/
+	sv_setpvn_mg(bufsv,"",0);	/* ensure it's writable string	*/
 
 #ifdef UTF8_SUPPORT
 	if (ftype == 112 && CS_IS_UTF8(imp_dbh->ncset) ) {
@@ -3988,7 +3999,7 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth, int field, long offset, long len, 
 
 	SvCUR_set(bufsv, destoffset+retl);
 
-	*SvEND(bufsv) = '\0'; /* consistent with perl sv_setpvn etc	*/
+	*SvEND(bufsv) = '\0'; /* consistent with perl sv_setpvn_mg etc	*/
 
 	return 1;
 }
@@ -4505,7 +4516,7 @@ static int enable_taf( pTHX_ SV *dbh, imp_dbh_t *imp_dbh)
     if (!can_taf)
         return local_error(aTHX_ dbh,
         "You are attempting to enable TAF on a server that is not TAF Enabled");
-    
+
 
     status = reg_taf_callback(dbh, imp_dbh);
     if (status != OCI_SUCCESS)

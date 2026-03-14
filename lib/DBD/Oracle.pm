@@ -368,6 +368,8 @@ package DBD::Oracle;
     use strict;
     use DBI qw(:sql_types);
 
+    our $VERSION_RE = qr/(?:^|\s)(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)(?:\s|$)/;
+
     sub prepare {
         my($dbh, $statement, @attribs)= @_;
 
@@ -530,16 +532,15 @@ SQL
                       push @Where, "TABLE_NAME  LIKE '$TblVal' ESCAPE '\\'";
                }
                if ( defined $TypVal ) {
-                      my $table_type_list;
                       $TypVal =~ s/^\s+//;
                       $TypVal =~ s/\s+$//;
                       my @ttype_list = split (/\s*,\s*/, $TypVal);
-                      foreach my $table_type (@ttype_list) {
+                      for my $table_type (@ttype_list) {
                              if ($table_type !~ /^'.*'$/) {
-                                    $table_type = "'" . $table_type . "'";
+                                    $table_type = "'$table_type'";
                              }
-                             $table_type_list = join(", ", @ttype_list);
                       }
+                      my $table_type_list = join(', ', @ttype_list);
                       push @Where, "TABLE_TYPE IN ($table_type_list)";
                }
                $SQL .= ' WHERE ' . join("\n   AND ", @Where ) . "\n" if @Where;
@@ -580,7 +581,6 @@ SELECT *
    AND TABLE_NAME  = ?
  ORDER BY TABLE_SCHEM, TABLE_NAME, KEY_SEQ
 SQL
-#warn "@_\n$Sql ($schema, $table)";
         my $sth = $dbh->prepare($SQL) or return undef;
         $sth->execute($schema, $table) or return undef;
         $sth;
@@ -1096,7 +1096,7 @@ SQL
         my $sth = $dbh->prepare_cached(q{
             begin dbms_msgpipe.acknowledge(:returnpipe, :errormsg, :param); end;}) or return;
         $sth->bind_param_inout(':returnpipe', \$msg->[0],   30);
-        $sth->bind_param_inout(':proc',       \$msg->[1],   30);
+        $sth->bind_param_inout(':errormsg',   \$msg->[1],   30);
         $sth->bind_param_inout(':param',      \$msg->[2], 4000);
         $sth->execute or return undef;
         return 1;
@@ -1111,12 +1111,11 @@ SELECT banner
   WHERE banner LIKE ? OR banner LIKE ?
 SQL
         if (defined $banner) {
-            my @version = $banner =~ /(?:^|\s)(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)(?:\s|$)/;
+            my @version = $banner =~ $VERSION_RE;
             $dbh->{ora_server_version} = \@version if @version;
         }
 
-        # TODO looks like a bug that we don't return
-        # $dbh->{ora_server_version} here
+        return $dbh->{ora_server_version};
     }
 
     sub ora_nls_parameters {
@@ -1179,8 +1178,6 @@ SQL
 
         $$hash_of_arrays{$p_id} = $value_array;
         return ora_bind_param_inout_array($sth, $p_id, $value_array,$maxlen, $attr);
-        1;
-
     }
 
 
@@ -1923,6 +1920,18 @@ Determine object type for each instance. All object attributes are returned (not
 =back
 
   $dbh->{ora_objects} = 1;
+
+B<Known Limitations:>
+
+Selecting from a table whose column type is a C<NOT INSTANTIABLE> parent
+type will fail with C<OCI-21500: internal error code, arguments:
+[kodrsobj1]> when the result set contains rows of different concrete
+subtypes interleaved with NULLs. This is because DBD::Oracle uses the
+parent type's TDO (Type Descriptor Object) when calling
+C<OCIDefineObject>, which Oracle cannot use to instantiate objects of a
+C<NOT INSTANTIABLE> type. Instantiable parent types with C<NOT FINAL>
+subtypes work correctly. See
+L<https://github.com/perl5-dbi/DBD-Oracle/issues/16>.
 
 =head4 ora_ph_type
 
@@ -2970,14 +2979,14 @@ Examples:
   $sth->execute(123, "Merk");
 
   ## Set the first placeholder's value and data type
-  $sth->bind_param(1, 234, { pg_type => ORA_NUMBER });
+  $sth->bind_param(1, 234, { ora_type => SQLT_INT });
 
   ## Set the second placeholder's value and data type.
   ## We don't send a third argument, so the default "varchar" is used
-  $sth->bind_param('$2', "Zool");
+  $sth->bind_param(2, "Zool");
 
   ## We realize that the wrong data type was set above, so we change it:
-  $sth->bind_param('$1', 234, { pg_type => SQL_INTEGER });
+  $sth->bind_param(1, 234, SQL_INTEGER);
 
   ## We also got the wrong value, so we change that as well.
   ## Because the data type is sticky, we don't need to change it
@@ -3650,8 +3659,8 @@ L</execute>, then the quoted versions of the values are returned.
 
 Returns a reference to a hash containing the type names currently bound to placeholders. The keys
 are the same as returned by the ParamValues method. The values are hashrefs containing a single key value
-pair, in which the key is either 'TYPE' if the type has a generic SQL equivalent, and 'pg_type' if the type can
-only be expressed by a Postgres type. The value is the internal number corresponding to the type originally
+pair, in which the key is either 'TYPE' if the type has a generic SQL equivalent, and 'ora_type' if the type can
+only be expressed by an Oracle type. The value is the internal number corresponding to the type originally
 passed in. (Placeholders that have not yet been bound will return undef as the value). This allows the output of
 ParamTypes to be passed back to the L</bind_param> method.
 

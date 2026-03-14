@@ -1,4 +1,4 @@
-FROM perl:5.32.1-threaded-buster
+FROM perl:5.42.0-threaded-trixie
 
 # This will install Oracle XE database and the Oracle SDK to make developing easier
 # It leans on the same scripts used by travis, so they can be tweaked here too
@@ -15,7 +15,7 @@ FROM perl:5.32.1-threaded-buster
 # Adjust the two variables below to set the Oracle XE server version and client version
 
 ENV ORACLEDBV=11.2 \
-    ORACLEV=19.6
+    ORACLEV=23.26
 
 # These are used by DBD::Oracle unit tests
 ENV ORACLE_USERID=kermit/foobar \
@@ -32,4 +32,4 @@ RUN apt-get update && apt-get install -y libaio-dev && \
 
 WORKDIR /usr/src/DBD-Oracle
 
-CMD /usr/src/DBD-Oracle/maint/docker-init.sh
+CMD ["/usr/src/DBD-Oracle/maint/docker-init.sh"]

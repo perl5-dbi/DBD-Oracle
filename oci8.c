@@ -1485,14 +1485,14 @@ fetch_func_varfield(SV *sth, imp_fbh_t *fbh, SV *dest_sv)
 					datalen = bytelen;
 			}
 	}
-	sv_setpvn(dest_sv, p, (STRLEN)datalen);
+	sv_setpvn_mg(dest_sv, p, (STRLEN)datalen);
 	if (CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform))
 		SvUTF8_on(dest_sv);
 	} else {
 #else
 	{
 #endif
-	sv_setpvn(dest_sv, p, (STRLEN)datalen);
+	sv_setpvn_mg(dest_sv, p, (STRLEN)datalen);
 	}
 
 	return 1;
@@ -1870,7 +1870,7 @@ ora_blob_read_mb_piece(SV *sth, imp_sth_t *imp_sth, imp_fbh_t *fbh,
                         destoffset, ul_t(amtp));
 
 	SvCUR_set(dest_sv, byte_destoffset+amtp);
-	*SvEND(dest_sv) = '\0'; /* consistent with perl sv_setpvn etc	*/
+	*SvEND(dest_sv) = '\0'; /* consistent with perl sv_setpvn_mg etc	*/
 	SvPOK_on(dest_sv);
 	if (ftype == ORA_CLOB && CSFORM_IMPLIES_UTF8(imp_dbh, csform))
 		SvUTF8_on(dest_sv);
@@ -2340,10 +2340,9 @@ static void get_attr_val(SV *sth,AV *list,imp_fbh_t *fbh, text  *name , OCITypeC
                                    &ub4_str_len,
                                    str_buf,
                                    status);
-
 		if (typecode == OCI_TYPECODE_TIMESTAMP_TZ || typecode == OCI_TYPECODE_TIMESTAMP_LTZ){
-			char s_tz_hour[6]="000";
-			char s_tz_min[6]="000";
+			char s_tz_hour[8]="000";
+			char s_tz_min[8]="000";
 			sb1 tz_hour;
 			sb1 tz_minute;
 			status = OCIDateTimeGetTimeZoneOffset (fbh->imp_sth->envhp,
@@ -2353,12 +2352,12 @@ static void get_attr_val(SV *sth,AV *list,imp_fbh_t *fbh, text  *name , OCITypeC
 									&tz_minute );
 
 			if (  (tz_hour<0) && (tz_hour>-10) ){
-				sprintf(s_tz_hour," %03d",tz_hour);
+				snprintf(s_tz_hour,sizeof(s_tz_hour)," %03d",tz_hour);
 			} else {
-				sprintf(s_tz_hour," %02d",tz_hour);
+				snprintf(s_tz_hour,sizeof(s_tz_hour)," %02d",tz_hour);
 			}
 
-			sprintf(s_tz_min,":%02d", tz_minute);
+			snprintf(s_tz_min,sizeof(s_tz_min),":%02d", tz_minute);
 			strcat((signed char*)str_buf, s_tz_hour);
 			strcat((signed char*)str_buf, s_tz_min);
 			str_buf[ub4_str_len+7] = '\0';
@@ -2775,9 +2774,9 @@ fetch_clbk_lob(SV *sth, imp_fbh_t *fbh,SV *dest_sv){
 
 	if (fbh->ftype == SQLT_BIN){
 		*(fb_ary->cb_abuf+(actual_bufl))='\0'; /* add a null teminator*/
-		sv_setpvn(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
+		sv_setpvn_mg(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
 	} else {
-		sv_setpvn(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
+		sv_setpvn_mg(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
 		if (CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform) ){
 			SvUTF8_on(dest_sv);
 		}
@@ -2879,7 +2878,7 @@ fetch_get_piece(SV *sth, imp_fbh_t *fbh,SV *dest_sv)
 	}
 
 	if (actual_bufl > 0){
-		sv_setpvn(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
+		sv_setpvn_mg(dest_sv, (char*)fb_ary->cb_abuf,(STRLEN)actual_bufl);
 		if (fbh->ftype != SQLT_BIN){
 
 			if (CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform) ){ /* do the UTF 8 magic*/
@@ -4185,14 +4184,14 @@ dbd_st_fetch(SV *sth, imp_sth_t *imp_sth){
 					/* very special case for binary lobs that are directly fetched.
 						Seems I have to use SQLT_LVB to get the length all other will fail*/
 					datalen = *(ub4*)row_data;
-					sv_setpvn(sv, (char*)row_data+ sizeof(ub4), datalen);
+					sv_setpvn_mg(sv, (char*)row_data+ sizeof(ub4), datalen);
 				}
 				else {
 					if (ChopBlanks && fbh->dbtype == 96) {
 						while(datalen && p[datalen - 1]==' ')
 							--datalen;
 					}
-					sv_setpvn(sv, p, (STRLEN)datalen);
+					sv_setpvn_mg(sv, p, (STRLEN)datalen);
 		/* If a bind type was specified we use DBI's sql_type_cast
 			to cast it - currently only number types are handled */
 					if ((fbh->req_type != 0) && (fbh->bind_flags != 0)) {
@@ -4242,7 +4241,7 @@ dbd_st_fetch(SV *sth, imp_sth_t *imp_sth){
 				if (!fbh->fetch_func) {
 					/* Copy the truncated value anyway, it may be of use,	*/
 					/* but it'll only be accessible via prior bind_column()	*/
-					sv_setpvn(sv, (char *)row_data,fb_ary->arlen[imp_sth->rs_array_idx]);
+					sv_setpvn_mg(sv, (char *)row_data,fb_ary->arlen[imp_sth->rs_array_idx]);
  					if ((CSFORM_IMPLIES_UTF8(imp_dbh, fbh->csform)) && (fbh->ftype != SQLT_BIN)){
 						SvUTF8_on(sv);
 					}
@@ -4643,7 +4642,7 @@ init_lob_refetch(SV *sth, imp_sth_t *imp_sth)
 			lob_cols_hv = newHV();
 
 		sv = newSViv(col_dbtype);
-		(void)sv_setpvn(sv, col_name, col_name_len);
+		(void)sv_setpvn_mg(sv, col_name, col_name_len);
 
 		if (CSFORM_IMPLIES_UTF8(imp_dbh, SQLCS_IMPLICIT))
 			SvUTF8_on(sv);
