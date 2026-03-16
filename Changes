@@ -1,5 +1,21 @@
 Revision history for DBD::Oracle
 
+1.91_5 2026-03-17
+  Fix stale SvCUR causing wrong output length for inout params (GH#216, Dean Hamstead)
+  Fix SIGCHLD race causing t/92-segv-fork.t to freeze (GH#212, Dean Hamstead)
+  Only run t/92-segv-fork.t on perl 5.42 or later (GH#212)
+  Fix join inside loop in table_info type filtering, remove unreachable code (Dean Hamstead)
+  Fix ora_server_version() returning undef on first call (GH#205, Dean Hamstead)
+  Fix placeholder mismatch in dbms_msgpipe_ack (Dean Hamstead)
+  Complete rt91217 fix: remove deprecated CHOOSE hint from all queries (Dean Hamstead)
+  Harden segv tests: Linux-only, version guards, bug fixes (GH#215, Dean Hamstead)
+  Support Oracle 23ai BOOLEAN type (GH#181, Dean Hamstead)
+  Fix SV refcount leak in pp_exec_rset() for unopened cursors (GH#217, Dean Hamstead)
+  Add TLS/SSL (TCPS) connection documentation (GH#166, Dean Hamstead)
+  Expand ora_events documentation with usage examples (GH#176, Dean Hamstead)
+  Fix ORA_DATE bind param support (GH#84, Dean Hamstead)
+  Avoid SvGROW underflow when phs->maxlen is zero (GH#105, Dean Hamstead)
+
 1.91_4 2026-02-23
 
   Replace GIMME with GIMME_V, deprecated a long time agao (GH#209, Dean Hamstead)
