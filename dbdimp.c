@@ -317,6 +317,7 @@ oratype_bind_ok(int dbtype) /* It's a type we support for placeholders */
 	case  2:	/* NVARCHAR2	*/
 	case  5:	/* STRING	*/
 	case  8:	/* LONG		*/
+	case 12:	/* DATE		*/
 	case 21:	/* BINARY FLOAT os-endian */
 	case 22:	/* BINARY DOUBLE os-endian */
 	case 23:	/* RAW		*/
@@ -2940,6 +2941,11 @@ dbd_rebind_ph(SV *sth, imp_sth_t *imp_sth, phs_t *phs)
 			done = dbd_rebind_ph_xml(sth, imp_sth, phs);
 	 		break;
 		default:
+			/* ORA_DATE (SQLT_DAT=12) expects 7-byte internal binary format
+			   but Perl provides a date string; remap to VARCHAR2 so Oracle
+			   applies implicit NLS_DATE_FORMAT conversion on the string. */
+			if (phs->ftype == ORA_DATE)
+				phs->ftype = 1; /* VARCHAR2 */
 			done = dbd_rebind_ph_char(imp_sth, phs);
 	}
 
