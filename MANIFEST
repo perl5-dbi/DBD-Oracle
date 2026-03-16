@@ -103,6 +103,9 @@ t/91-segv-fork.t
 t/92-segv-fork.pl
 t/92-segv-fork.t
 t/93-gh205_ora_server_version.t
+t/94-gh217_cursor_leak.t
+t/94-version-banner-regex.t
+t/95-gh84_ora_date_bind.t
 t/cache2.pl
 t/lib/DBDOracleTestLib.pm
 t/lib/ExecuteArray.pm
