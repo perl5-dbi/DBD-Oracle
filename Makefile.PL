@@ -17,7 +17,7 @@ use Pod::Usage;
 # For those not using Dynamic loading this means building a
 # new static perl in the DBI directory by saying 'make perl'
 # and then using _that_ perl to make this one.
-use DBI 1.623;
+use DBI 1.632;
 use DBI::DBD; # DBD creation tools
 
 
@@ -46,7 +46,7 @@ my %opts = (
     VERSION_FROM => 'lib/DBD/Oracle.pm',
     PREREQ_PM => { "Test::Simple" => 0.90, # actually Test::More pkg in T::S dist
                    "Test::NoWarnings" => 1.00,
-                   "DBI"          => 1.623},
+                   "DBI"          => 1.632},
     OBJECT => '$(O_FILES)',
     DEFINE => '',
     DIR  => [],
@@ -57,8 +57,8 @@ my %opts = (
         COMPRESS     => 'gzip -v9', SUFFIX => 'gz',
     },
     META_MERGE => {
-       configure_requires => { "DBI" => '1.623' },
-       build_requires => {"DBI" => '1.623',
+       configure_requires => { "DBI" => '1.632' },
+       build_requires => {"DBI" => '1.632',
                           "ExtUtils::MakeMaker" => 0,
                           "Test::Simple" => '0.90',
                           "Test::NoWarnings" => "1.00"},
@@ -1158,7 +1158,7 @@ sub del_crtobj {
 sub find_mkfile {
 
     my @mk_oci32 = (
-            'rdbms/demo/demo_xe.mk',
+        'rdbms/demo/demo_xe.mk',
         'rdbms/demo/demo_rdbms32.mk',
         'rdbms/demo/demo_rdbms.mk',
         'rdbms/lib/ins_rdbms.mk', #Oracle 11 full client

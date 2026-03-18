@@ -47,7 +47,7 @@ package DBD::Oracle;
     #unshift @EXPORT_OK, 'ora_cygwin_set_env' if $^O eq 'cygwin';
     Exporter::export_ok_tags(qw(ora_types ora_session_modes ora_fetch_orient ora_exe_modes ora_fail_over));
 
-    require_version DBI 1.623;
+    require_version DBI 1.632;
 
     DBD::Oracle->bootstrap($DBD::Oracle::VERSION);
     DBD::Oracle::dr::init_globals() ;
