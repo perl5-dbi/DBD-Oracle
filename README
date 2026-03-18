@@ -44,7 +44,7 @@ DBD::Oracle  --  an Oracle interface for Perl 5.
     Build, test and install Perl 5 (at least 5.6.1)
     It is very important to TEST it and INSTALL it!
 
-    Build, test and install the DBI module (at least DBI 1.623).
+    Build, test and install the DBI module (at least DBI 1.632).
     It is very important to TEST it and INSTALL it!
 
     Remember to *read* the DBI README file and this one CAREFULLY!
