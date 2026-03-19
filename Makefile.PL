@@ -44,9 +44,11 @@ $| = 1;
 my %opts = (
     NAME => 'DBD::Oracle',
     VERSION_FROM => 'lib/DBD/Oracle.pm',
-    PREREQ_PM => { "Test::Simple" => 0.90, # actually Test::More pkg in T::S dist
-                   "Test::NoWarnings" => 1.00,
-                   "DBI"          => 1.632},
+    PREREQ_PM => {
+        'DBI'              => 1.632,
+        'Test::NoWarnings' => 1.00,
+        'Test::Simple'     => 0.90, # actually Test::More pkg in T::S dist
+    },
     OBJECT => '$(O_FILES)',
     DEFINE => '',
     DIR  => [],
@@ -57,11 +59,23 @@ my %opts = (
         COMPRESS     => 'gzip -v9', SUFFIX => 'gz',
     },
     META_MERGE => {
-       configure_requires => { "DBI" => '1.632' },
-       build_requires => {"DBI" => '1.632',
-                          "ExtUtils::MakeMaker" => 0,
-                          "Test::Simple" => '0.90',
-                          "Test::NoWarnings" => "1.00"},
+       configure => {
+           requires => {
+               'DBI' => '1.632',
+           },
+       },
+       build => {
+           requires => {
+               'DBI'                 => '1.632',
+               'ExtUtils::MakeMaker' => 0,
+               'Test::NoWarnings'    => '1.00',
+               'Test::Simple'        => '0.90',
+            },
+        },
+        runtime => {
+            recommends => { 'DBI' => '1.644' },
+            suggests   => { 'DBI' => '1.647' },
+        }
     },
 );
 
