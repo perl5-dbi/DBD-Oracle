@@ -1,67 +1,62 @@
 Revision history for DBD::Oracle
 
-1.91_5 2026-03-17
-  Fix stale SvCUR causing wrong output length for inout params (GH#216, Dean Hamstead)
-  Fix SIGCHLD race causing t/92-segv-fork.t to freeze (GH#212, Dean Hamstead)
-  Only run t/92-segv-fork.t on perl 5.42 or later (GH#212)
-  Fix join inside loop in table_info type filtering, remove unreachable code (Dean Hamstead)
-  Fix ora_server_version() returning undef on first call (GH#205, Dean Hamstead)
-  Fix placeholder mismatch in dbms_msgpipe_ack (Dean Hamstead)
-  Complete rt91217 fix: remove deprecated CHOOSE hint from all queries (Dean Hamstead)
-  Harden segv tests: Linux-only, version guards, bug fixes (GH#215, Dean Hamstead)
-  Support Oracle 23ai BOOLEAN type (GH#181, Dean Hamstead)
-  Fix SV refcount leak in pp_exec_rset() for unopened cursors (GH#217, Dean Hamstead)
-  Add TLS/SSL (TCPS) connection documentation (GH#166, Dean Hamstead)
-  Expand ora_events documentation with usage examples (GH#176, Dean Hamstead)
-  Fix ORA_DATE bind param support (GH#84, Dean Hamstead)
-  Avoid SvGROW underflow when phs->maxlen is zero (GH#105, Dean Hamstead)
+1.95 2026-03-24
 
-1.91_4 2026-02-23
-
-  Replace GIMME with GIMME_V, deprecated a long time agao (GH#209, Dean Hamstead)
-  Replace old k&r style definitions to quiet down compiler warnings (GH#210, Dean Hamstead)
-  Document NOT INSTANTIABLE object type limitation (GH#16, Dean Hamstead)
-  Use ldconfig to find ORACLE_HOME (Daniel Lewart)
-  Fix documentation (GH#115, Dean Hamstead)
-  Fix some typos (Dean Hamstead)
-  Adjust unit tests use of diag and note (Dean Hamstead)
-  Change every occurance of 'sv_setvpn' to 'sv_setvpn_mg' (GH#177, lzsiga)
-  Skip 92-segv-fork.t unless on Linux (Dean Hamstead)
-  Add unit tests for gh#86 set as TODO. Proving the issue hoping someone will fix (Dean Hamstead)
-
-1.91_3    2026-02-17
-
-  Improvements to t/92-segv-fork.t (Victor)
-  Fix for "Buffer is accessed out of bounds" from ccpcheck (GH#59, Victor)
-  Test updates (GH#193, Victor)
-  Fix up unit tests (Dean Hamstead)
-  Remove outdated ifdefs (GH#186, H.Merijn Brand)
-  Attempts to resolve SEGV issue (GH#187, Victor)
-  Various clean ups and typos (GH#187, Victor)
-  Makefile.PL fix for missing Test::NoWarnings build requirement (GH#175, Wesley Hinds)
-  don't care about ExtUtils::MakeMaker version number anymore (GH#184, Wesley Hinds)
-  Makefile.PL: help to find linking libraries on Gentoo (GH#184, Marco Genasci)
+- Fix stale SvCUR causing wrong output length for inout params (GH#216, Dean Hamstead)
+- Fix SIGCHLD race causing t/92-segv-fork.t to freeze (GH#212, Dean Hamstead)
+- Only run t/92-segv-fork.t on perl 5.42 or later (GH#212)
+- Fix join inside loop in table_info type filtering, remove unreachable code (Dean Hamstead)
+- Fix ora_server_version() returning undef on first call (GH#205, Dean Hamstead)
+- Fix placeholder mismatch in dbms_msgpipe_ack (Dean Hamstead)
+- Complete rt91217 fix: remove deprecated CHOOSE hint from all queries (Dean Hamstead)
+- Harden segv tests: Linux-only, version guards, bug fixes (GH#215, Dean Hamstead)
+- Support Oracle 23ai BOOLEAN type (GH#181, Dean Hamstead)
+- Fix SV refcount leak in pp_exec_rset() for unopened cursors (GH#217, Dean Hamstead)
+- Add TLS/SSL (TCPS) connection documentation (GH#166, Dean Hamstead)
+- Expand ora_events documentation with usage examples (GH#176, Dean Hamstead)
+- Fix ORA_DATE bind param support (GH#84, Dean Hamstead)
+- Avoid SvGROW underflow when phs->maxlen is zero (GH#105, Dean Hamstead)
+- Replace GIMME with GIMME_V, deprecated a long time agao (GH#209, Dean Hamstead)
+- Replace old k&r style definitions to quiet down compiler warnings (GH#210, Dean Hamstead)
+- Document NOT INSTANTIABLE object type limitation (GH#16, Dean Hamstead)
+- Use ldconfig to find ORACLE_HOME (Daniel Lewart)
+- Fix documentation (GH#115, Dean Hamstead)
+- Fix some typos (Dean Hamstead)
+- Adjust unit tests use of diag and note (Dean Hamstead)
+- Change every occurance of 'sv_setvpn' to 'sv_setvpn_mg' (GH#177, lzsiga)
+- Skip 92-segv-fork.t unless on Linux (Dean Hamstead)
+- Add unit tests for gh#86 set as TODO. Proving the issue hoping someone will fix (Dean Hamstead)
+- Improvements to t/92-segv-fork.t (Victor)
+- Fix for "Buffer is accessed out of bounds" from ccpcheck (GH#59, Victor)
+- Test updates (GH#193, Victor)
+- Fix up unit tests (Dean Hamstead)
+- Remove outdated ifdefs (GH#186, H.Merijn Brand)
+- Attempts to resolve SEGV issue (GH#187, Victor)
+- Various clean ups and typos (GH#187, Victor)
+- Makefile.PL fix for missing Test::NoWarnings build requirement (GH#175, Wesley Hinds)
+- don't care about ExtUtils::MakeMaker version number anymore (GH#184, Wesley Hinds)
+- Makefile.PL: help to find linking libraries on Gentoo (GH#184, Marco Genasci)
 
 1.90    2024-04-16
 
-  Specify resources metadata explicitly in dist.ini (GH#162, Graham Knop)
-  Ensure dbivport.h is installed- (GH#150, Wesley Hinds)
-  Add DBI to ConfigureRequires, BuildRequires, and Test Requires - (GH#155)
-  Move from TravisCI to Github Actions (GHA) - (PR#152, Wesley Hinds)
-  Update dbdcnx.c - (PR#152, Andrei Voropaev)
-  Rewrite of login6. This is an enormous rewrite which should fix many problems - (PR#150, Andrei Voropaev)
-  Improvements to Makefile.PL - (PR#150, Andrei Voropaev)
-  Have find_headers() also search for header files based off the major version number - (GH#142, Wesley Hinds)
-  Check for appropriate permissions before running 56embbeded.t tests - (#143, Wesley Hinds)
-  Updated links in doc in Oracle.pm - (Gh#145, kjetillll)
-  Update 25plsql.t and add 21.5 to @bad_oci_vers - (GH#144, kjetillll)
-  Check permissions for tests in 28array_bind.t - (GH#141, Wesley Hinds)
-  Exclude 19.9 and 19.13 from 25plsql.t - (GH#140, Wesley Hinds)
-
+- Specify resources metadata explicitly in dist.ini (GH#162, Graham Knop)
+- Ensure dbivport.h is installed- (GH#150, Wesley Hinds)
+- Add DBI to ConfigureRequires, BuildRequires, and Test Requires - (GH#155)
+- Move from TravisCI to Github Actions (GHA) - (PR#152, Wesley Hinds)
+- Update dbdcnx.c - (PR#152, Andrei Voropaev)
+- Rewrite of login6. This is an enormous rewrite which should fix many problems - (PR#150, Andrei Voropaev)
+- Improvements to Makefile.PL - (PR#150, Andrei Voropaev)
+- Have find_headers() also search for header files based off the major version number - (GH#142, Wesley Hinds)
+- Check for appropriate permissions before running 56embbeded.t tests - (#143, Wesley Hinds)
+- Updated links in doc in Oracle.pm - (Gh#145, kjetillll)
+- Update 25plsql.t and add 21.5 to @bad_oci_vers - (GH#144, kjetillll)
+- Check permissions for tests in 28array_bind.t - (GH#141, Wesley Hinds)
+- Exclude 19.9 and 19.13 from 25plsql.t - (GH#140, Wesley Hinds)
+-
 1.83
 
-  Build improvements on Debian-ish systems (GH#112, Alex Muntada)
-  Add rpath to ORACLE_HOME to DBD/Oracle/Oracle.bundle (GH#129, hackonhagland).
+- Build improvements on Debian-ish systems (GH#112, Alex Muntada)
+- Add rpath to ORACLE_HOME to DBD/Oracle/Oracle.bundle (GH#129, hackonhagland).
 
 1.82      2021-12-29
 
